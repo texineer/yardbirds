@@ -1,0 +1,22 @@
+{
+  "name": "yardbirds",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Perfect Game baseball parent app - schedules and pitch counts",
+  "scripts": {
+    "server": "node server/index.js",
+    "client": "cd client && npm run dev",
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "scrape": "node server/scrapers/run.js",
+    "build": "cd client && npm run build"
+  },
+  "dependencies": {
+    "axios": "^1.7.0",
+    "sql.js": "^1.11.0",
+    "cheerio": "^1.0.0",
+    "concurrently": "^9.0.0",
+    "cors": "^2.8.5",
+    "express": "^4.21.0",
+    "node-cron": "^3.0.3"
+  }
+}

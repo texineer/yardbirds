@@ -1,0 +1,185 @@
+@import "tailwindcss";
+
+:root {
+  /* From the Yardbirds logo */
+  --navy: #2B3E50;
+  --navy-light: #3A5268;
+  --navy-muted: #5A7A92;
+  --powder: #8AAFC6;
+  --powder-light: #B5D1E2;
+  --powder-pale: #DCE9F0;
+  --gold: #D4A832;
+  --gold-light: #E4BE4E;
+  --gold-dark: #B8912A;
+  --sky: #F2F7FA;
+  --cream: #FFFFFF;
+  --border: #D8E4EC;
+  --win: #1B7340;
+  --win-bg: #E8F5E9;
+  --loss: #B8302A;
+  --loss-bg: #FDEAEA;
+  --warning: #C47F1A;
+  --warning-bg: #FFF8E7;
+  --danger: #B8302A;
+}
+
+body {
+  margin: 0;
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  background-color: var(--sky);
+  color: var(--navy);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Display font for scores and headers */
+.font-display {
+  font-family: 'Bebas Neue', 'Arial Narrow', sans-serif;
+  letter-spacing: 0.03em;
+}
+
+/* Gold stitch line decoration */
+.stitch-line {
+  background-image: repeating-linear-gradient(
+    90deg,
+    var(--gold) 0px,
+    var(--gold) 6px,
+    transparent 6px,
+    transparent 12px
+  );
+  height: 2px;
+  opacity: 0.5;
+}
+
+/* Pitch count progress bar */
+.pitch-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--powder-pale);
+  overflow: hidden;
+}
+
+.pitch-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.6s ease-out;
+}
+
+.pitch-bar-ok { background: var(--powder); }
+.pitch-bar-warning { background: var(--warning); }
+.pitch-bar-danger { background: var(--danger); }
+
+/* Score badge animations */
+@keyframes scoreReveal {
+  from { transform: scale(0.8); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.score-reveal {
+  animation: scoreReveal 0.3s ease-out;
+}
+
+/* Staggered card entrance */
+@keyframes cardSlideUp {
+  from { transform: translateY(12px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.card-enter {
+  animation: cardSlideUp 0.35s ease-out both;
+}
+
+/* Spinner */
+@keyframes diamondSpin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.diamond-spin {
+  animation: diamondSpin 1.2s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+}
+
+/* Button styles */
+.btn-primary {
+  background: var(--navy);
+  color: white;
+  transition: background 0.15s, transform 0.1s;
+}
+.btn-primary:hover { background: var(--navy-light); }
+.btn-primary:active { transform: scale(0.97); }
+
+.btn-gold {
+  background: var(--gold);
+  color: var(--navy);
+  font-weight: 700;
+  transition: background 0.15s, transform 0.1s;
+}
+.btn-gold:hover { background: var(--gold-light); }
+.btn-gold:active { transform: scale(0.97); }
+
+/* Table styling */
+.stat-table th {
+  font-family: 'DM Sans', sans-serif;
+  font-weight: 600;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--navy-muted);
+  padding: 0.5rem 0.75rem;
+  background: var(--sky);
+  border-bottom: 2px solid var(--border);
+}
+
+.stat-table td {
+  padding: 0.6rem 0.75rem;
+  font-size: 0.85rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.stat-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* Card base */
+.card {
+  background: var(--cream);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(43, 62, 80, 0.04), 0 4px 12px rgba(43, 62, 80, 0.02);
+}
+
+/* Nav active state */
+.nav-active {
+  color: var(--gold-dark);
+  position: relative;
+}
+.nav-active::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--gold);
+}
+
+/* Section label */
+.section-label {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 0.8rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--navy-muted);
+}
+
+/* Scrollbar */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }

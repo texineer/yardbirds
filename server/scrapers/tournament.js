@@ -1,0 +1,336 @@
+const axios = require('axios');
+const cheerio = require('cheerio');
+const queries = require('../db/queries');
+const { PG_BASE } = require('./team');
+
+async function scrapeTournamentPage(eventId) {
+  const url = `${PG_BASE}/events/Default.aspx?event=${eventId}`;
+  console.log(`[scraper] Fetching tournament page: ${url}`);
+
+  const { data: html } = await axios.get(url, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    },
+    timeout: 30000,
+  });
+
+  const $ = cheerio.load(html);
+
+  // Get title - prefer <title> tag, clean up suffix
+  let title = $('title').text().trim().replace(/\s*\|\s*Perfect Game.*$/i, '').replace(/\s*-\s*Perfect Game.*$/i, '').trim();
+  if (!title) title = $('h1, h2').first().text().trim();
+
+  const bodyText = $('body').text();
+
+  const months = { jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',
+                   jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12',
+                   january:'01',february:'02',march:'03',april:'04',june:'06',
+                   july:'07',august:'08',september:'09',october:'10',november:'11',december:'12' };
+
+  let location = '';
+  // Pattern: "Venue | City, ST"
+  const locMatch = bodyText.match(/\|\s*([A-Z][A-Za-z\s.]+,\s*[A-Z]{2})/);
+  if (locMatch) location = locMatch[1].trim();
+  if (!location) {
+    const locMatch2 = bodyText.match(/(?:Location|City)[:\s]*([^\n,]+,\s*[A-Z]{2})/i);
+    if (locMatch2) location = locMatch2[1].trim();
+  }
+
+  let startDate = '', endDate = '';
+
+  // Pattern 1: "Mar 28, 2026 Mar 29, 2026" (two separate dates with year)
+  const twoDateMatch = bodyText.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2}),?\s*(\d{4})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2}),?\s*(\d{4})/i);
+  if (twoDateMatch) {
+    const m1 = months[twoDateMatch[1].toLowerCase()];
+    const m2 = months[twoDateMatch[4].toLowerCase()];
+    startDate = `${twoDateMatch[3]}-${m1}-${String(twoDateMatch[2]).padStart(2, '0')}`;
+    endDate = `${twoDateMatch[6]}-${m2}-${String(twoDateMatch[5]).padStart(2, '0')}`;
+  }
+
+  // Pattern 2: "March 28-29, 2026" (full month name, range)
+  if (!startDate) {
+    const rangeMatch = bodyText.match(/(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})\s*-\s*(\d{1,2}),?\s*(\d{4})/i);
+    if (rangeMatch) {
+      const m = months[rangeMatch[1].toLowerCase()];
+      startDate = `${rangeMatch[4]}-${m}-${String(rangeMatch[2]).padStart(2, '0')}`;
+      endDate = `${rangeMatch[4]}-${m}-${String(rangeMatch[3]).padStart(2, '0')}`;
+    }
+  }
+
+  // Pattern 3: "Feb 28-Mar 1" (cross-month, abbreviated)
+  if (!startDate) {
+    const crossMonth = bodyText.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})\s*-\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})/i);
+    if (crossMonth) {
+      const m1 = months[crossMonth[1].toLowerCase()];
+      const m2 = months[crossMonth[3].toLowerCase()];
+      // Find year from title or body
+      const yearMatch = title.match(/(\d{4})/) || bodyText.match(/(\d{4})/);
+      const y = yearMatch ? yearMatch[1] : new Date().getFullYear().toString();
+      startDate = `${y}-${m1}-${String(crossMonth[2]).padStart(2, '0')}`;
+      endDate = `${y}-${m2}-${String(crossMonth[4]).padStart(2, '0')}`;
+    }
+  }
+
+  // Pattern 4: "Mar 28-29" same-month abbreviated
+  if (!startDate) {
+    const shortMatch = bodyText.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})\s*-\s*(\d{1,2})/i);
+    if (shortMatch) {
+      const m = months[shortMatch[1].toLowerCase()];
+      const yearMatch = title.match(/(\d{4})/) || bodyText.match(/(\d{4})/);
+      const y = yearMatch ? yearMatch[1] : new Date().getFullYear().toString();
+      startDate = `${y}-${m}-${String(shortMatch[2]).padStart(2, '0')}`;
+      endDate = `${y}-${m}-${String(shortMatch[3]).padStart(2, '0')}`;
+    }
+  }
+
+  if (title) {
+    await queries.upsertTournament({
+      pgEventId: eventId,
+      name: title,
+      startDate,
+      endDate,
+      location,
+      pgUrl: url,
+    });
+  }
+
+  return { name: title, startDate, endDate, location };
+}
+
+// Scrape the pitching restrictions/report page for a tournament
+// URL: /events/Tournaments/PitchingRestrictions.aspx?event={eventId}
+async function scrapePitchingReport(eventId) {
+  const url = `${PG_BASE}/events/Tournaments/PitchingRestrictions.aspx?event=${eventId}`;
+  console.log(`[scraper] Fetching pitching report: ${url}`);
+
+  try {
+    const { data: html } = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      },
+      timeout: 30000,
+    });
+
+    const $ = cheerio.load(html);
+    const entries = parsePitchingRestrictions($, eventId);
+
+    if (entries.length > 0) {
+      console.log(`[scraper] Found ${entries.length} pitching entries for event ${eventId}`);
+    } else {
+      console.log(`[scraper] No pitching data found for event ${eventId}`);
+    }
+
+    return entries;
+  } catch (err) {
+    console.log(`[scraper] Pitching report error for event ${eventId}: ${err.message}`);
+    return [];
+  }
+}
+
+function parsePitchingRestrictions($, eventId) {
+  const entries = [];
+
+  // The PitchingRestrictions page has a table with columns:
+  // No. | Player | # Pitches | # Outs | Opponent
+  // Rows are grouped by team (team name appears in a row spanning all columns)
+  $('table').each((_, table) => {
+    const headers = [];
+    $(table).find('tr:first-child th, tr:first-child td').each((_, th) => {
+      headers.push($(th).text().trim().toLowerCase());
+    });
+
+    // Check if this is the pitching data table
+    const hasPitchCol = headers.some(h => h.includes('pitch'));
+    const hasPlayerCol = headers.some(h => h === 'player' || h === 'no.');
+    if (!hasPitchCol || !hasPlayerCol) return;
+
+    // Map columns
+    const colMap = {};
+    headers.forEach((h, i) => {
+      if (h === 'no.' || h === 'no' || h === '#') colMap.number = i;
+      else if (h === 'player') colMap.player = i;
+      else if (h.includes('pitch')) colMap.pitches = i;
+      else if (h.includes('out')) colMap.outs = i;
+      else if (h === 'opponent') colMap.opponent = i;
+    });
+
+    let currentTeam = '';
+
+    $(table).find('tr').slice(1).each((_, row) => {
+      const cells = [];
+      $(row).find('td').each((_, td) => cells.push($(td).text().trim()));
+
+      // Team header rows typically have fewer cells or a single cell spanning columns
+      const tds = $(row).find('td');
+      if (tds.length === 1 || (cells.length === 1 && cells[0])) {
+        // This is a team name header row
+        currentTeam = cells[0].trim();
+        return;
+      }
+
+      // Also check: if cells don't have a number in the "No." column, it might be a team row
+      if (cells.length >= 2 && colMap.player !== undefined) {
+        const playerName = cells[colMap.player];
+        const pitchStr = colMap.pitches !== undefined ? cells[colMap.pitches] : '';
+        const pitches = parseInt(pitchStr) || 0;
+
+        if (!playerName || pitches === 0) {
+          // Might be a team header or empty row
+          if (cells.join('').trim() && !pitchStr) {
+            // Could be team name - take the longest cell value
+            const longestCell = cells.reduce((a, b) => a.length > b.length ? a : b, '');
+            if (longestCell.length > 2) currentTeam = longestCell;
+          }
+          return;
+        }
+
+        // Convert outs to innings (3 outs = 1 inning)
+        const outs = colMap.outs !== undefined ? parseInt(cells[colMap.outs]) || 0 : 0;
+        const innings = Math.floor(outs / 3) + (outs % 3) / 10; // e.g., 7 outs = 2.1 IP
+
+        const opponent = colMap.opponent !== undefined ? cells[colMap.opponent] : '';
+
+        entries.push({
+          playerName,
+          teamName: currentTeam,
+          pitches,
+          innings,
+          outs,
+          opponent,
+          strikeouts: null, // Not available on this page
+          walks: null,
+        });
+      }
+    });
+  });
+
+  return entries;
+}
+
+// Scrape scheduled games from the main tournament event page
+// URL: /events/Default.aspx?event={eventId}
+async function scrapeTournamentSchedule(eventId) {
+  const url = `${PG_BASE}/events/Default.aspx?event=${eventId}`;
+  console.log(`[scraper] Fetching tournament schedule: ${url}`);
+
+  try {
+    const { data: html } = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      },
+      timeout: 30000,
+    });
+
+    const $ = cheerio.load(html);
+    const games = [];
+
+    // Try to extract tournament dates from date selector/tabs on the page
+    // Look for patterns like "Mar 28, 2026" or "March 28, 2026"
+    const bodyText = $('body').text();
+    const allDates = [];
+    const dateRegex = /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2}),?\s*(\d{4})/gi;
+    let dm;
+    while ((dm = dateRegex.exec(bodyText)) !== null) {
+      const months = { jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12' };
+      const m = months[dm[1].toLowerCase().slice(0,3)];
+      if (m) allDates.push(`${dm[3]}-${m}-${String(dm[2]).padStart(2,'0')}`);
+    }
+    // Unique sorted dates for this tournament
+    const tourneyDates = [...new Set(allDates)].sort();
+
+    // Find all DiamondKast game links - the entire game card is one <a> tag
+    $('a[href*="/DiamondKast/Game.aspx?gameid="], a[href*="DiamondKast/Game.aspx?gameid="]').each((_, el) => {
+      const href = $(el).attr('href') || '';
+      const gameMatch = href.match(/gameid=(\d+)/);
+      if (!gameMatch) return;
+
+      const pgGameId = parseInt(gameMatch[1]);
+
+      // The entire card is the <a> tag - get its text
+      const text = $(el).text().replace(/\s+/g, ' ').trim();
+
+      // Extract time (e.g., "8:00 AM", "10:00 AM")
+      let gameTime = '';
+      const timeMatch = text.match(/(\d{1,2}:\d{2}\s*(?:AM|PM))/i);
+      if (timeMatch) gameTime = timeMatch[1].trim();
+
+      // Extract field info - grab "Venue Name Field X" before the time
+      let field = '';
+      if (gameTime) {
+        const beforeTime = text.slice(0, text.indexOf(gameTime)).trim();
+        if (beforeTime) field = beforeTime;
+      }
+      if (!field) {
+        const fieldMatch = text.match(/([A-Z][A-Za-z\s]+ Field \d+)/);
+        if (fieldMatch) field = fieldMatch[0].replace(/\s+/g, ' ').trim();
+      }
+
+      // Parse team names from card text
+      // Pattern: "Venue Field X  TIME  Team1  Score1  Team2  Score2"
+      // Strategy: split on the time to get everything after it, then split on score numbers
+      let teams = [];
+
+      // Also try to find team links inside (some pages have them)
+      const teamLinks = $(el).find('a[href*="/PGBA/Team/default.aspx"]');
+      if (teamLinks.length >= 2) {
+        teamLinks.each((_, tl) => {
+          const tHref = $(tl).attr('href') || '';
+          const orgMatch = tHref.match(/orgid=(\d+)/);
+          const teamIdMatch = tHref.match(/orgteamid=(\d+)/);
+          teams.push({
+            name: $(tl).text().trim(),
+            orgId: orgMatch ? parseInt(orgMatch[1]) : null,
+            teamId: teamIdMatch ? parseInt(teamIdMatch[1]) : null,
+          });
+        });
+      }
+
+      // If no team links, parse from text after the time
+      if (teams.length < 2 && gameTime) {
+        const timeIdx = text.indexOf(gameTime);
+        const afterTime = timeIdx >= 0 ? text.slice(timeIdx + gameTime.length).trim() : text;
+        // Pattern: "Team1 Score1 Team2 Score2" — scores are lone numbers
+        // Split into segments: text separated by lone numbers
+        const segments = afterTime.split(/\s+\d{1,3}\s+/).map(s => s.trim()).filter(s => s.length > 1);
+        // Remove trailing score from last segment
+        if (segments.length >= 1) {
+          segments[segments.length - 1] = segments[segments.length - 1].replace(/\s+\d{1,3}\s*$/, '').trim();
+        }
+        if (segments.length >= 2) {
+          teams = segments.slice(0, 2).map(n => ({ name: n, orgId: null, teamId: null }));
+        }
+      }
+
+      // Try to determine date - if tournament has 1 date, use it
+      // If multiple dates, try to infer from position (AM games = day 1 typically)
+      // For now, default to first tournament date if available
+      let gameDate = tourneyDates.length === 1 ? tourneyDates[0] : '';
+
+      games.push({
+        pgGameId,
+        pgEventId: eventId,
+        gameDate,
+        gameTime,
+        field,
+        teams,
+        pgBoxUrl: `${PG_BASE}/DiamondKast/Game.aspx?gameid=${pgGameId}`,
+      });
+    });
+
+    // Deduplicate
+    const seen = new Set();
+    const unique = games.filter(g => {
+      if (seen.has(g.pgGameId)) return false;
+      seen.add(g.pgGameId);
+      return true;
+    });
+
+    console.log(`[scraper] Found ${unique.length} scheduled games for event ${eventId}`);
+    return unique;
+  } catch (err) {
+    console.error(`[scraper] Tournament schedule error for event ${eventId}: ${err.message}`);
+    return [];
+  }
+}
+
+module.exports = { scrapeTournamentPage, scrapePitchingReport, scrapeTournamentSchedule };
