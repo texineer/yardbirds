@@ -1,4 +1,6 @@
+import { useState, useEffect } from 'react'
 import { Routes, Route, Link, useLocation, useParams } from 'react-router-dom'
+import { getConfig } from './api'
 import Dashboard from './pages/Dashboard'
 import Schedule from './pages/Schedule'
 import GameDetail from './pages/GameDetail'
@@ -6,13 +8,15 @@ import PitchingReport from './pages/PitchingReport'
 import TeamSearch from './pages/TeamSearch'
 import TournamentSchedule from './pages/TournamentSchedule'
 import TournamentBracket from './pages/TournamentBracket'
-
-// Default team: RR Yardbirds 14U
-const DEFAULT_ORG = 50903
-const DEFAULT_TEAM = 276649
+import LoadingSpinner from './components/LoadingSpinner'
 
 function App() {
   const location = useLocation()
+  const [config, setConfig] = useState(null)
+
+  useEffect(() => {
+    getConfig().then(setConfig).catch(() => setConfig({ orgId: 50903, teamId: 276649, teamName: 'Yardbirds' }))
+  }, [])
 
   const navItems = [
     { path: '/', label: 'Home', icon: HomeIcon },
@@ -26,9 +30,9 @@ function App() {
       <header className="relative overflow-hidden" style={{ background: 'var(--navy)' }}>
         <div className="relative px-4 py-2.5 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2.5 no-underline">
-            <img src="/yardbirds-logo.png" alt="Yardbirds" className="w-9 h-9 object-contain" />
+            <img src="/yardbirds-logo.png" alt="" className="w-9 h-9 object-contain" />
             <div>
-              <span className="font-display text-xl text-white tracking-wide leading-none">YARDBIRDS</span>
+              <span className="font-display text-xl text-white tracking-wide leading-none">{(config?.teamName || 'YARDBIRDS').toUpperCase()}</span>
               <span className="block text-[10px] font-semibold tracking-[0.2em] uppercase" style={{ color: 'var(--gold)' }}>PG + Five Tool</span>
             </div>
           </Link>
@@ -38,9 +42,10 @@ function App() {
 
       {/* Main Content */}
       <main className="flex-1 px-4 py-5 max-w-2xl mx-auto w-full">
+        {!config ? <LoadingSpinner /> : (
         <Routes>
-          <Route path="/" element={<Dashboard orgId={DEFAULT_ORG} teamId={DEFAULT_TEAM} />} />
-          <Route path="/schedule" element={<Schedule orgId={DEFAULT_ORG} teamId={DEFAULT_TEAM} />} />
+          <Route path="/" element={<Dashboard orgId={config.orgId} teamId={config.teamId} />} />
+          <Route path="/schedule" element={<Schedule orgId={config.orgId} teamId={config.teamId} />} />
           <Route path="/game/:gameId" element={<GameDetail />} />
           <Route path="/tournament/:eventId/pitching" element={<PitchingReport />} />
           <Route path="/tournament/:eventId/schedule" element={<TournamentSchedule />} />
@@ -49,6 +54,7 @@ function App() {
           <Route path="/team/:orgId/:teamId" element={<DynamicDashboard />} />
           <Route path="/team/:orgId/:teamId/schedule" element={<DynamicSchedule />} />
         </Routes>
+        )}
       </main>
 
       {/* Bottom Navigation */}

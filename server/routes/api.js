@@ -4,6 +4,18 @@ const queries = require('../db/queries');
 const { scrapeAll } = require('../scrapers/run');
 const { scrapeTournamentSchedule } = require('../scrapers/tournament');
 
+// Team config — served to the frontend
+const TEAM_CONFIG = {
+  orgId: parseInt(process.env.PG_ORG_ID) || 50903,
+  teamId: parseInt(process.env.PG_TEAM_ID) || 276649,
+  teamName: process.env.TEAM_NAME || 'Yardbirds',
+};
+
+// GET /api/config
+router.get('/config', (req, res) => {
+  res.json(TEAM_CONFIG);
+});
+
 // Pitch count rules by age group
 const PITCH_RULES = {
   '8U':  { dailyMax: 50,  thresholds: [{ pitches: 1, rest: 0 }, { pitches: 21, rest: 1 }, { pitches: 36, rest: 2 }, { pitches: 51, rest: 3 }] },

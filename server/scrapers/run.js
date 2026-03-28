@@ -4,14 +4,14 @@ const { scrapeFiveToolTeam } = require('./fivetool');
 const queries = require('../db/queries');
 const { closeDb, saveDb } = require('../db/schema');
 
-// Default: RR Yardbirds 14U
-const DEFAULT_ORG_ID = 50903;
-const DEFAULT_TEAM_ID = 276649;
-const DEFAULT_YEAR = 2026;
+// Team config — override via environment variables
+const DEFAULT_ORG_ID = parseInt(process.env.PG_ORG_ID) || 50903;
+const DEFAULT_TEAM_ID = parseInt(process.env.PG_TEAM_ID) || 276649;
+const DEFAULT_YEAR = parseInt(process.env.YEAR) || 2026;
 
 // Five Tool config
-const FT_TEAM_UUID = 'cc705482-b247-41d9-8591-dc97f17a1ca2';
-const FT_SEASONS = ['2026-baseball'];
+const FT_TEAM_UUID = process.env.FT_TEAM_UUID || 'cc705482-b247-41d9-8591-dc97f17a1ca2';
+const FT_SEASONS = (process.env.FT_SEASONS || '2026-baseball').split(',');
 
 async function scrapeAll(orgId = DEFAULT_ORG_ID, teamId = DEFAULT_TEAM_ID, year = DEFAULT_YEAR) {
   console.log(`\n=== Scraping team ${orgId}/${teamId} for ${year} ===\n`);

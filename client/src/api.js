@@ -6,6 +6,10 @@ async function fetchJson(url) {
   return res.json();
 }
 
+export function getConfig() {
+  return fetchJson('/config');
+}
+
 export function getTeam(orgId, teamId) {
   return fetchJson(`/teams/${orgId}/${teamId}`);
 }
