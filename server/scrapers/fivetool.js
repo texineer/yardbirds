@@ -168,14 +168,37 @@ async function scrapeFiveToolTeam(teamUuid, season, orgId, teamId, ourTeamName =
     }
   }
 
+  // Scrape event pages for date ranges and locations
+  for (const event of result.events) {
+    try {
+      const eventHtml = fetchWithCurl(event.ftUrl);
+      const $e = cheerio.load(eventHtml);
+      const titleText = $e('title').text().trim();
+      // Title format: "Event Name MM/DD/YYYY - MM/DD/YYYY - ..."
+      const dateRangeMatch = titleText.match(/(\d{2}\/\d{2}\/\d{4})\s*-\s*(\d{2}\/\d{2}\/\d{4})/);
+      if (dateRangeMatch) {
+        const [_, sd, ed] = dateRangeMatch;
+        // Convert MM/DD/YYYY to YYYY-MM-DD
+        event.startDate = `${sd.slice(6)}-${sd.slice(0,2)}-${sd.slice(3,5)}`;
+        event.endDate = `${ed.slice(6)}-${ed.slice(0,2)}-${ed.slice(3,5)}`;
+      }
+      // Try to find location from page text
+      const bodyText = $e('body').text();
+      const locMatch = bodyText.match(/(?:Location|Venue|City)[:\s]*([A-Z][A-Za-z\s.]+,\s*[A-Z]{2})/);
+      if (locMatch) event.location = locMatch[1].trim();
+    } catch (err) {
+      console.log(`[ft-scraper] Could not fetch event details for ${event.name}: ${err.message}`);
+    }
+  }
+
   // Save events as tournaments
   for (const event of result.events) {
     await queries.upsertFtTournament({
       eventId: event.eventId,
       name: event.name,
-      startDate: event.date,
-      endDate: '',
-      location: '',
+      startDate: event.startDate || event.date,
+      endDate: event.endDate || '',
+      location: event.location || '',
       ftUrl: event.ftUrl,
     });
     await queries.linkTeamTournament(orgId, teamId, event.eventId);
