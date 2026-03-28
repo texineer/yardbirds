@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { getGame, getDailyPitchTotals, pitchSeverity } from '../api'
+import { getGame, getDailyPitchTotals, getOpponentPitchers, pitchSeverity } from '../api'
 import LoadingSpinner from '../components/LoadingSpinner'
 
 const DAILY_MAX = 95
@@ -11,6 +11,7 @@ export default function GameDetail() {
   const [loading, setLoading] = useState(true)
   const [dailyTotals, setDailyTotals] = useState(null)
   const [showDaily, setShowDaily] = useState(false)
+  const [opponentPitchers, setOpponentPitchers] = useState(null)
 
   useEffect(() => {
     getGame(gameId)
@@ -18,6 +19,13 @@ export default function GameDetail() {
       .catch(console.error)
       .finally(() => setLoading(false))
   }, [gameId])
+
+  // Auto-load opponent pitcher data
+  useEffect(() => {
+    if (game && game.opponent_name && game.source !== 'ft') {
+      getOpponentPitchers(gameId).then(setOpponentPitchers).catch(console.error)
+    }
+  }, [game, gameId])
 
   useEffect(() => {
     if (showDaily && !dailyTotals) {
@@ -94,6 +102,61 @@ export default function GameDetail() {
           )}
         </div>
       </div>
+
+      {/* Opponent Pitching Scouting Report */}
+      {opponentPitchers && opponentPitchers.pitchers?.length > 0 && (
+        <div>
+          <div className="section-label mb-2">
+            Opponent Pitching — {opponentPitchers.opponentName}
+          </div>
+          <div className="card overflow-hidden">
+            <div className="px-4 py-2" style={{ background: 'var(--navy)', color: 'white' }}>
+              <span className="text-[10px] font-bold uppercase tracking-wider">Tournament Pitch Counts</span>
+            </div>
+            <table className="w-full stat-table">
+              <thead>
+                <tr>
+                  <th className="text-left">Pitcher</th>
+                  <th className="text-right">Total</th>
+                  <th className="text-right">App</th>
+                  <th className="text-right">IP</th>
+                  <th className="text-right">Max</th>
+                </tr>
+              </thead>
+              <tbody>
+                {opponentPitchers.pitchers.map((p, i) => {
+                  const sev = pitchSeverity(p.max_pitches)
+                  const pct = Math.min((p.total_pitches / (DAILY_MAX * (p.appearances || 1))) * 100, 100)
+                  return (
+                    <tr key={i}>
+                      <td>
+                        <span className="font-semibold">{p.player_name}</span>
+                        <div className="pitch-bar mt-1">
+                          <div className={`pitch-bar-fill pitch-bar-${sev}`} style={{ width: `${Math.min((p.total_pitches / DAILY_MAX) * 100, 100)}%` }} />
+                        </div>
+                      </td>
+                      <td className="text-right font-display text-lg">{p.total_pitches}</td>
+                      <td className="text-right" style={{ color: 'var(--navy-muted)' }}>{p.appearances}</td>
+                      <td className="text-right" style={{ color: 'var(--navy-muted)' }}>{p.total_innings || '-'}</td>
+                      <td className="text-right">
+                        <span className={`font-display text-lg ${
+                          sev === 'danger' ? 'text-[var(--danger)]' :
+                          sev === 'warning' ? 'text-[var(--warning)]' : ''
+                        }`}>
+                          {p.max_pitches}
+                        </span>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-[10px] mt-1.5 font-semibold uppercase tracking-wider" style={{ color: 'var(--navy-muted)' }}>
+            Cumulative pitch counts for this tournament
+          </p>
+        </div>
+      )}
 
       {/* Pitch Counts */}
       {game.pitchCounts?.length > 0 && (

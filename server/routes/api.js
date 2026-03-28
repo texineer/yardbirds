@@ -134,6 +134,21 @@ router.get('/games/:gameId/daily-totals', async (req, res) => {
   }
 });
 
+// GET /api/games/:gameId/opponent-pitchers
+router.get('/games/:gameId/opponent-pitchers', async (req, res) => {
+  try {
+    const game = await queries.getGame(parseInt(req.params.gameId));
+    if (!game) return res.status(404).json({ error: 'Game not found' });
+    if (!game.pg_event_id || !game.opponent_name) {
+      return res.json({ opponentName: game.opponent_name || 'Unknown', pitchers: [] });
+    }
+    const pitchers = await queries.getOpponentPitcherTotals(game.pg_event_id, game.opponent_name);
+    res.json({ opponentName: game.opponent_name, pitchers });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/tournaments/:eventId
 router.get('/tournaments/:eventId', async (req, res) => {
   try {

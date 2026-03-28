@@ -30,6 +30,10 @@ export function getDailyPitchTotals(gameId) {
   return fetchJson(`/games/${gameId}/daily-totals`);
 }
 
+export function getOpponentPitchers(gameId) {
+  return fetchJson(`/games/${gameId}/opponent-pitchers`);
+}
+
 export function getTournamentPitchingReport(eventId) {
   return fetchJson(`/tournaments/${eventId}/pitching-report`);
 }

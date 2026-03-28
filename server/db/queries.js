@@ -264,6 +264,23 @@ async function getCombinedRecord(orgId, teamId) {
   `, [orgId, teamId]);
 }
 
+// Opponent pitcher totals for a tournament
+async function getOpponentPitcherTotals(eventId, opponentName) {
+  const db = await getDb();
+  return all(db, `
+    SELECT
+      player_name,
+      SUM(pitches) as total_pitches,
+      COUNT(*) as appearances,
+      SUM(innings) as total_innings,
+      MAX(pitches) as max_pitches
+    FROM pitch_counts
+    WHERE pg_event_id = ? AND team_name = ?
+    GROUP BY player_name
+    ORDER BY total_pitches DESC
+  `, [eventId, opponentName]);
+}
+
 module.exports = {
   upsertTeam, getTeam, searchTeams,
   upsertPlayer, getPlayers,
@@ -271,5 +288,5 @@ module.exports = {
   upsertGame, getTeamGames, getGame, getGameByPgId, getTournamentGames,
   insertPitchCount, clearPitchCounts, clearTournamentPitchCounts, getGamePitchCounts, getTournamentPitchCounts, getTournamentPitcherTotals,
   getDailyPitchTotals, getGamesPitchTotals,
-  upsertFtTournament, upsertFtGame, getCombinedRecord,
+  upsertFtTournament, upsertFtGame, getCombinedRecord, getOpponentPitcherTotals,
 };
