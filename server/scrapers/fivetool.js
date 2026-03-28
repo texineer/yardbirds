@@ -42,14 +42,20 @@ function teamUrl(season, teamUuid) {
   return `${FT_BASE}/team/details/${season}/${teamUuid}`;
 }
 
-async function scrapeFiveToolTeam(teamUuid, season, orgId, teamId) {
+async function scrapeFiveToolTeam(teamUuid, season, orgId, teamId, ourTeamName = null) {
   const url = teamUrl(season, teamUuid);
   console.log(`[ft-scraper] Fetching: ${url}`);
 
   const html = fetchWithCurl(url);
 
   const $ = cheerio.load(html);
-  const result = { record: null, events: [], games: [] };
+  const result = { record: null, events: [], games: [], teamName: '' };
+
+  // Detect our team name from the page title
+  const titleText = $('title').text().trim();
+  const titleMatch = titleText.match(/^(.+?)\s*Team Profile/i);
+  if (titleMatch) result.teamName = titleMatch[1].trim();
+  console.log(`[ft-scraper] Team name: "${result.teamName}"`);
 
   // Parse season record: "W-L-T 7-5-1"
   const recordText = $('.team-record-tables').text().replace(/\s+/g, ' ');
@@ -91,57 +97,76 @@ async function scrapeFiveToolTeam(teamUuid, season, orgId, teamId) {
       };
       result.events.push(event);
     } else if (row['#'] && row['TEAM'] && row['VS']) {
-      // Game result row
+      // Game result row — store raw data, we'll fix scores after
       const scoreText = row['VS'].text.replace(/\s+/g, ' ').trim();
       const scoreMatch = scoreText.match(/(\d+)\s*-\s*(\d+)/);
-
-      let scoreUs = null, scoreThem = null, opponentName = '';
-
-      if (scoreMatch) {
-        const s1 = parseInt(scoreMatch[1]);
-        const s2 = parseInt(scoreMatch[2]);
-
-        // The TEAM column shows the team listed first in the matchup.
-        // The VS column shows: "opponent_score - our_score" when TEAM is us,
-        // and "our_score - opponent_score" when TEAM is the opponent.
-        // (Verified by cross-referencing event W-L-T records)
-        const teamName = row['TEAM'].text.trim();
-        const isUs = teamName.toLowerCase().includes('yardbird');
-
-        if (isUs) {
-          scoreThem = s1;
-          scoreUs = s2;
-          opponentName = '';
-        } else {
-          opponentName = teamName;
-          scoreUs = s1;
-          scoreThem = s2;
-        }
-      }
-
-      let result_ = null;
-      if (scoreUs !== null && scoreThem !== null) {
-        if (scoreUs > scoreThem) result_ = 'W';
-        else if (scoreUs < scoreThem) result_ = 'L';
-        else result_ = 'T';
-      }
-
+      const teamName = row['TEAM'].text.trim();
+      const teamLink = row['TEAM'].link || '';
+      const isUs = teamLink.includes(teamUuid);
       const eventName = row['EVENT'] ? row['EVENT'].text.trim() : '';
       const eventLink = row['EVENT'] ? row['EVENT'].link || '' : '';
 
-      result.games.push({
-        gameNum: row['#'].text.trim(),
-        eventName,
-        eventLink,
-        opponentName,
-        scoreUs,
-        scoreThem,
-        result: result_,
-      });
+      if (scoreMatch) {
+        result.games.push({
+          gameNum: row['#'].text.trim(),
+          eventName,
+          eventLink,
+          opponentName: isUs ? '' : teamName,
+          s1: parseInt(scoreMatch[1]),
+          s2: parseInt(scoreMatch[2]),
+          isUs,
+          scoreUs: null,
+          scoreThem: null,
+          result: null,
+        });
+      }
     }
   }
 
   console.log(`[ft-scraper] Events: ${result.events.length}, Games: ${result.games.length}`);
+
+  // Auto-detect score direction by cross-validating against event W-L-T records.
+  // Try both interpretations and pick the one that matches.
+  // Interpretation A: VS = "s1 - s2" where for US rows: scoreUs=s1, for OPP rows: scoreThem=s1
+  // Interpretation B: VS = "s1 - s2" where for US rows: scoreThem=s1, for OPP rows: scoreUs=s1
+  for (const interp of ['A', 'B']) {
+    let allMatch = true;
+    for (const event of result.events) {
+      const wltMatch = event.wlt.match(/(\d+)-(\d+)-(\d+)/);
+      if (!wltMatch) continue;
+      const expectedW = parseInt(wltMatch[1]), expectedL = parseInt(wltMatch[2]), expectedT = parseInt(wltMatch[3]);
+      if (expectedW + expectedL + expectedT === 0) continue; // no games yet
+
+      const eventGames = result.games.filter(g => g.eventName === event.name);
+      let w = 0, l = 0, t = 0;
+      for (const g of eventGames) {
+        let us, them;
+        if (interp === 'A') {
+          us = g.isUs ? g.s1 : g.s2;
+          them = g.isUs ? g.s2 : g.s1;
+        } else {
+          us = g.isUs ? g.s2 : g.s1;
+          them = g.isUs ? g.s1 : g.s2;
+        }
+        if (us > them) w++; else if (us < them) l++; else t++;
+      }
+      if (w !== expectedW || l !== expectedL || t !== expectedT) { allMatch = false; break; }
+    }
+    if (allMatch) {
+      console.log(`[ft-scraper] Score interpretation: ${interp}`);
+      for (const g of result.games) {
+        if (interp === 'A') {
+          g.scoreUs = g.isUs ? g.s1 : g.s2;
+          g.scoreThem = g.isUs ? g.s2 : g.s1;
+        } else {
+          g.scoreUs = g.isUs ? g.s2 : g.s1;
+          g.scoreThem = g.isUs ? g.s1 : g.s2;
+        }
+        g.result = g.scoreUs > g.scoreThem ? 'W' : g.scoreUs < g.scoreThem ? 'L' : 'T';
+      }
+      break;
+    }
+  }
 
   // Save events as tournaments
   for (const event of result.events) {

@@ -30,7 +30,7 @@ function App() {
       <header className="relative overflow-hidden" style={{ background: 'var(--navy)' }}>
         <div className="relative px-4 py-2.5 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2.5 no-underline">
-            <img src="/yardbirds-logo.png" alt="" className="w-9 h-9 object-contain" />
+            <img src={config?.teamLogo || '/yardbirds-logo.png'} alt="" className="w-9 h-9 object-contain" />
             <div>
               <span className="font-display text-xl text-white tracking-wide leading-none">{(config?.teamName || 'YARDBIRDS').toUpperCase()}</span>
               <span className="block text-[10px] font-semibold tracking-[0.2em] uppercase" style={{ color: 'var(--gold)' }}>PG + Five Tool</span>

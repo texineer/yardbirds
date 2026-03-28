@@ -9,6 +9,7 @@ const TEAM_CONFIG = {
   orgId: parseInt(process.env.PG_ORG_ID) || 50903,
   teamId: parseInt(process.env.PG_TEAM_ID) || 276649,
   teamName: process.env.TEAM_NAME || 'Yardbirds',
+  teamLogo: process.env.TEAM_LOGO || '/yardbirds-logo.png',
 };
 
 // GET /api/config
