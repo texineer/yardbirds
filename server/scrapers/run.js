@@ -1,5 +1,6 @@
 const { scrapeTeamPage } = require('./team');
 const { scrapeTournamentPage, scrapePitchingReport, scrapeTournamentSchedule } = require('./tournament');
+const { scrapeFiveToolTeam } = require('./fivetool');
 const queries = require('../db/queries');
 const { closeDb, saveDb } = require('../db/schema');
 
@@ -7,6 +8,10 @@ const { closeDb, saveDb } = require('../db/schema');
 const DEFAULT_ORG_ID = 50903;
 const DEFAULT_TEAM_ID = 276649;
 const DEFAULT_YEAR = 2026;
+
+// Five Tool config
+const FT_TEAM_UUID = 'cc705482-b247-41d9-8591-dc97f17a1ca2';
+const FT_SEASONS = ['2026-baseball'];
 
 async function scrapeAll(orgId = DEFAULT_ORG_ID, teamId = DEFAULT_TEAM_ID, year = DEFAULT_YEAR) {
   console.log(`\n=== Scraping team ${orgId}/${teamId} for ${year} ===\n`);
@@ -97,6 +102,19 @@ async function scrapeAll(orgId = DEFAULT_ORG_ID, teamId = DEFAULT_TEAM_ID, year 
         await sleep(1500);
       } catch (err) {
         console.error(`[scraper] Error scraping tournament ${tournament.pgEventId}: ${err.message}`);
+      }
+    }
+
+    // Step 3: Scrape Five Tool Youth
+    if (FT_TEAM_UUID) {
+      console.log('\n--- Five Tool Youth ---');
+      for (const ftSeason of FT_SEASONS) {
+        try {
+          await scrapeFiveToolTeam(FT_TEAM_UUID, ftSeason, orgId, teamId);
+          await sleep(1500);
+        } catch (err) {
+          console.error(`[ft-scraper] Error scraping ${ftSeason}: ${err.message}`);
+        }
       }
     }
 

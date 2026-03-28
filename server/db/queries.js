@@ -223,6 +223,47 @@ async function getGamesPitchTotals(gameIds) {
   return map;
 }
 
+// Five Tool upserts
+async function upsertFtTournament({ eventId, name, startDate, endDate, location, ftUrl }) {
+  const db = await getDb();
+  run(db, `
+    INSERT INTO tournaments (pg_event_id, name, start_date, end_date, location, pg_url, last_scraped, source)
+    VALUES (?, ?, ?, ?, ?, ?, datetime('now'), 'ft')
+    ON CONFLICT(pg_event_id) DO UPDATE SET
+      name=excluded.name, start_date=excluded.start_date, end_date=excluded.end_date,
+      location=excluded.location, pg_url=excluded.pg_url, last_scraped=datetime('now'), source='ft'
+  `, [eventId, name, startDate, endDate, location, ftUrl]);
+}
+
+async function upsertFtGame({ sourceGameKey, pgEventId, teamOrgId, teamId, opponentName, gameDate, scoreUs, scoreThem, result }) {
+  const db = await getDb();
+  // Check if game exists by source_game_key
+  const existing = get(db, 'SELECT id FROM games WHERE source_game_key = ?', [sourceGameKey]);
+  if (existing) {
+    run(db, `
+      UPDATE games SET opponent_name=?, game_date=?, score_us=?, score_them=?, result=?
+      WHERE source_game_key=?
+    `, [opponentName, gameDate, scoreUs, scoreThem, result, sourceGameKey]);
+  } else {
+    run(db, `
+      INSERT INTO games (pg_event_id, team_org_id, team_id, opponent_name, game_date, score_us, score_them, result, source, source_game_key)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ft', ?)
+    `, [pgEventId, teamOrgId, teamId, opponentName, gameDate, scoreUs, scoreThem, result, sourceGameKey]);
+  }
+}
+
+// Combined record across all sources
+async function getCombinedRecord(orgId, teamId) {
+  const db = await getDb();
+  return get(db, `
+    SELECT
+      SUM(CASE WHEN result = 'W' THEN 1 ELSE 0 END) as wins,
+      SUM(CASE WHEN result = 'L' THEN 1 ELSE 0 END) as losses,
+      SUM(CASE WHEN result = 'T' THEN 1 ELSE 0 END) as ties
+    FROM games WHERE team_org_id = ? AND team_id = ?
+  `, [orgId, teamId]);
+}
+
 module.exports = {
   upsertTeam, getTeam, searchTeams,
   upsertPlayer, getPlayers,
@@ -230,4 +271,5 @@ module.exports = {
   upsertGame, getTeamGames, getGame, getGameByPgId, getTournamentGames,
   insertPitchCount, clearPitchCounts, clearTournamentPitchCounts, getGamePitchCounts, getTournamentPitchCounts, getTournamentPitcherTotals,
   getDailyPitchTotals, getGamesPitchTotals,
+  upsertFtTournament, upsertFtGame, getCombinedRecord,
 };

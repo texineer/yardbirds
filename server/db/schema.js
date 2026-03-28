@@ -127,6 +127,12 @@ function initSchema() {
   db.run('CREATE INDEX IF NOT EXISTS idx_games_event ON games(pg_event_id)');
   db.run('CREATE INDEX IF NOT EXISTS idx_pitch_counts_game ON pitch_counts(game_id)');
   db.run('CREATE INDEX IF NOT EXISTS idx_pitch_counts_event ON pitch_counts(pg_event_id)');
+
+  // Migration: add source columns for multi-source support (PG + Five Tool)
+  try { db.run("ALTER TABLE tournaments ADD COLUMN source TEXT DEFAULT 'pg'"); } catch(e) {}
+  try { db.run("ALTER TABLE games ADD COLUMN source TEXT DEFAULT 'pg'"); } catch(e) {}
+  try { db.run("ALTER TABLE games ADD COLUMN source_game_key TEXT"); } catch(e) {}
+  db.run('CREATE UNIQUE INDEX IF NOT EXISTS idx_games_source_key ON games(source_game_key)');
 }
 
 function saveDb() {

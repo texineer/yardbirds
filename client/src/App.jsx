@@ -29,7 +29,7 @@ function App() {
             <img src="/yardbirds-logo.png" alt="Yardbirds" className="w-9 h-9 object-contain" />
             <div>
               <span className="font-display text-xl text-white tracking-wide leading-none">YARDBIRDS</span>
-              <span className="block text-[10px] font-semibold tracking-[0.2em] uppercase" style={{ color: 'var(--gold)' }}>Perfect Game</span>
+              <span className="block text-[10px] font-semibold tracking-[0.2em] uppercase" style={{ color: 'var(--gold)' }}>PG + Five Tool</span>
             </div>
           </Link>
         </div>

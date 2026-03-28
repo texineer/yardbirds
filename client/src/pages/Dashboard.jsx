@@ -69,11 +69,11 @@ export default function Dashboard({ orgId, teamId }) {
     )
   }
 
-  // Parse record
-  const recordParts = team?.record?.match(/(\d+)-(\d+)-(\d+)/)
-  const wins = recordParts ? recordParts[1] : '0'
-  const losses = recordParts ? recordParts[2] : '0'
-  const ties = recordParts ? recordParts[3] : '0'
+  // Combined record from all sources (PG + Five Tool)
+  const cr = team?.combinedRecord
+  const wins = cr ? String(cr.wins || 0) : '0'
+  const losses = cr ? String(cr.losses || 0) : '0'
+  const ties = cr ? String(cr.ties || 0) : '0'
 
   const allGames = schedule?.tournaments?.flatMap(t => t.games) || []
   const now = new Date().toISOString().slice(0, 10)

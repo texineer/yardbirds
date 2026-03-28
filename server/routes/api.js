@@ -37,7 +37,8 @@ router.get('/teams/:orgId/:teamId', async (req, res) => {
     const team = await queries.getTeam(parseInt(req.params.orgId), parseInt(req.params.teamId));
     if (!team) return res.status(404).json({ error: 'Team not found. Try scraping first.' });
     const players = await queries.getPlayers(team.pg_org_id, team.pg_team_id);
-    res.json({ ...team, players });
+    const combinedRecord = await queries.getCombinedRecord(parseInt(req.params.orgId), parseInt(req.params.teamId));
+    res.json({ ...team, players, combinedRecord });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -150,6 +151,10 @@ router.get('/tournaments/:eventId/full-schedule', async (req, res) => {
   try {
     const eventId = parseInt(req.params.eventId);
     const tournament = await queries.getTournament(eventId);
+    // Only scrape PG tournament schedules (FT doesn't have accessible schedule pages)
+    if (tournament && tournament.source === 'ft') {
+      return res.json({ tournament, games: [] });
+    }
     const games = await scrapeTournamentSchedule(eventId);
     res.json({ tournament, games });
   } catch (err) {
@@ -161,6 +166,11 @@ router.get('/tournaments/:eventId/full-schedule', async (req, res) => {
 router.get('/tournaments/:eventId/pitching-report', async (req, res) => {
   try {
     const eventId = parseInt(req.params.eventId);
+    // FT tournaments have no pitch count data
+    const tournament = await queries.getTournament(eventId);
+    if (tournament && tournament.source === 'ft') {
+      return res.json({ totals: [], details: [] });
+    }
     const totals = await queries.getTournamentPitcherTotals(eventId);
     const details = await queries.getTournamentPitchCounts(eventId);
     res.json({ totals, details });
