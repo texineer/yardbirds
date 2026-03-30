@@ -75,22 +75,27 @@ export default function Dashboard({ orgId, teamId, slug }) {
   const losses = cr ? String(cr.losses || 0) : '0'
   const ties = cr ? String(cr.ties || 0) : '0'
 
-  const allGames = schedule?.tournaments?.flatMap(t => t.games) || []
+  // Sort tournaments: upcoming first (nearest date), then past (most recent first)
   const now = new Date().toISOString().slice(0, 10)
-  const upcoming = allGames.filter(g => !g.result && (g.game_date >= now || !g.game_date)).sort((a, b) => (a.game_date || '').localeCompare(b.game_date || ''))
-  const recent = allGames.filter(g => g.result).sort((a, b) => b.game_date.localeCompare(a.game_date)).slice(0, 5)
+  const tournaments = (schedule?.tournaments || []).slice().sort((a, b) => {
+    const dateA = a.tournament.start_date || ''
+    const dateB = b.tournament.start_date || ''
+    const aUp = dateA >= now
+    const bUp = dateB >= now
+    if (aUp && !bUp) return -1
+    if (!aUp && bUp) return 1
+    return aUp ? dateA.localeCompare(dateB) : dateB.localeCompare(dateA)
+  })
 
   return (
     <div className="space-y-6">
       {/* Team Hero */}
       <div className="card relative overflow-hidden">
-        {/* Powder blue accent strip at top */}
         <div className="h-1.5" style={{ background: 'linear-gradient(90deg, var(--powder), var(--gold), var(--powder))' }} />
         <div className="p-5">
           <div className="flex items-start gap-4">
-            <img src={team?.logo_url || '/yardbirds-logo.png'} alt="Yardbirds" className="w-16 h-16 object-contain shrink-0" />
+            <img src={team?.logo_url || '/yardbirds-logo.png'} alt="" className="w-16 h-16 object-contain shrink-0" />
             <div className="flex-1 min-w-0">
-              <div className="section-label mb-0.5">Team</div>
               <h1 className="font-display text-3xl leading-none" style={{ color: 'var(--navy)' }}>
                 {team?.name || 'Team'}
               </h1>
@@ -108,6 +113,10 @@ export default function Dashboard({ orgId, teamId, slug }) {
                 {team?.hometown && (
                   <span className="text-xs" style={{ color: 'var(--navy-muted)' }}>{team.hometown}</span>
                 )}
+              </div>
+              {/* Record */}
+              <div className="font-display text-4xl leading-none mt-3" style={{ color: 'var(--navy)' }}>
+                {wins}<span className="opacity-20">-</span>{losses}<span className="opacity-20">-</span>{ties}
               </div>
             </div>
             <button
@@ -129,58 +138,64 @@ export default function Dashboard({ orgId, teamId, slug }) {
               )}
             </button>
           </div>
-
-          {/* Record */}
-          {team?.record && (
-            <div className="mt-4 flex items-end justify-between">
-              <div>
-                <div className="font-display text-5xl leading-none" style={{ color: 'var(--navy)' }}>
-                  {wins}<span className="opacity-20">-</span>{losses}<span className="opacity-20">-</span>{ties}
-                </div>
-                <div className="section-label mt-1">Season Record</div>
-              </div>
-              <Link
-                to="schedule"
-                className="btn-gold text-xs no-underline px-3 py-1.5 rounded-lg mb-1"
-              >
-                Full Schedule
-              </Link>
-            </div>
-          )}
         </div>
       </div>
 
-      {/* Next Game */}
-      {upcoming.length > 0 && (
-        <div>
-          <div className="section-label mb-2">Next Up</div>
-          <GameCard game={upcoming[0]} highlight index={0} />
+      {/* Schedule grouped by tournament */}
+      {tournaments.length === 0 && (
+        <div className="text-center py-8">
+          <div className="font-display text-xl" style={{ color: 'var(--navy-muted)' }}>NO GAMES YET</div>
+          <p className="text-sm mt-1" style={{ color: 'var(--navy-muted)' }}>Tap Sync to load schedule data.</p>
         </div>
       )}
 
-      {/* Upcoming */}
-      {upcoming.length > 1 && (
-        <div>
-          <div className="section-label mb-2">Upcoming</div>
-          <div className="space-y-2">
-            {upcoming.slice(1, 4).map((g, i) => (
-              <GameCard key={g.id} game={g} index={i} />
-            ))}
-          </div>
-        </div>
-      )}
+      {tournaments.map(({ tournament: t, games }) => {
+        const isUpcoming = (t.start_date || '') >= now
+        return (
+          <div key={t.pg_event_id}>
+            {/* Tournament header */}
+            <div className="rounded-t-xl px-4 py-3" style={{ background: 'var(--navy)' }}>
+              <div className="flex items-center justify-between">
+                <div className="flex-1 min-w-0">
+                  <div className="font-display text-lg text-white leading-tight truncate">{t.name}</div>
+                  <div className="flex items-center gap-2 mt-1">
+                    {t.start_date && (
+                      <span className="text-[10px] font-bold text-white/50">
+                        {formatDate(t.start_date)}{t.end_date && t.end_date !== t.start_date ? ` — ${formatDate(t.end_date)}` : ''}
+                      </span>
+                    )}
+                    {t.location && (
+                      <span className="text-[10px] text-white/40 truncate">{t.location}</span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex gap-1.5 ml-2 flex-shrink-0">
+                  {t.source !== 'ft' && (
+                    <Link to={`tournament/${t.pg_event_id}/bracket`}
+                      className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded no-underline"
+                      style={{ background: 'rgba(212,168,50,0.2)', color: 'var(--gold)' }}>
+                      Bracket
+                    </Link>
+                  )}
+                </div>
+              </div>
+            </div>
 
-      {/* Recent Results */}
-      {recent.length > 0 && (
-        <div>
-          <div className="section-label mb-2">Recent Results</div>
-          <div className="space-y-2">
-            {recent.map((g, i) => (
-              <GameCard key={g.id} game={g} index={i} />
-            ))}
+            {/* Games */}
+            <div className="rounded-b-xl overflow-hidden border border-t-0 mb-1" style={{ borderColor: 'var(--border)' }}>
+              {games.length === 0 ? (
+                <div className="p-4 text-sm text-center" style={{ color: 'var(--navy-muted)' }}>No games scheduled</div>
+              ) : (
+                <div className="divide-y" style={{ borderColor: 'var(--border)' }}>
+                  {games.sort((a, b) => (a.game_date || '').localeCompare(b.game_date || '') || (a.game_time || '').localeCompare(b.game_time || '')).map((g, i) => (
+                    <GameCard key={g.id} game={g} index={i} />
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        )
+      })}
 
       {/* Roster */}
       {team?.players?.length > 0 && (
@@ -212,4 +227,12 @@ export default function Dashboard({ orgId, teamId, slug }) {
       )}
     </div>
   )
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return ''
+  try {
+    const d = new Date(dateStr + 'T00:00:00')
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  } catch { return dateStr }
 }
