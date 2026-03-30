@@ -219,11 +219,37 @@ router.get('/tournaments/:eventId/full-schedule', async (req, res) => {
   }
 });
 
-// GET /api/tournaments/:eventId/teams - scrape registered teams from PG event page
+// GET /api/tournaments/:eventId/teams - get teams registered for a tournament
 router.get('/tournaments/:eventId/teams', async (req, res) => {
   try {
+    const eventId = parseInt(req.params.eventId);
+    const tournament = await queries.getTournament(eventId);
+
+    if (tournament && tournament.source === 'ft') {
+      // Five Tool: use Playwright to get teams from schedule_ajax
+      const { scrapeFtEventTeams } = require('../scrapers/fivetool');
+      // Extract event slug from pg_url
+      const slugMatch = tournament.pg_url?.match(/\/events\/([^/]+)/);
+      if (slugMatch) {
+        const teams = await scrapeFtEventTeams(slugMatch[1]);
+        return res.json(teams);
+      }
+      return res.json([]);
+    }
+
+    // PG: try to extract teams from existing games in DB
+    const games = await queries.getTournamentGames(eventId);
+    if (games.length > 0) {
+      const teamSet = new Map();
+      for (const g of games) {
+        if (g.opponent_name) teamSet.set(g.opponent_name.toLowerCase(), { name: g.opponent_name });
+      }
+      return res.json([...teamSet.values()].sort((a, b) => a.name.localeCompare(b.name)));
+    }
+
+    // PG: try scraping team links from event page
     const { scrapeRegisteredTeams } = require('../scrapers/tournament');
-    const teams = await scrapeRegisteredTeams(parseInt(req.params.eventId));
+    const teams = await scrapeRegisteredTeams(eventId);
     res.json(teams);
   } catch (err) {
     res.status(500).json({ error: err.message });

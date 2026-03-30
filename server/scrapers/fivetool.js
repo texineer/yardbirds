@@ -104,6 +104,55 @@ async function scrapeFtEventSchedule(eventSlug, teamName) {
   }
 }
 
+// Scrape all registered teams from an FT event using schedule_ajax
+async function scrapeFtEventTeams(eventSlug) {
+  const url = `${FT_BASE}/events/${eventSlug}/schedule/all`;
+  console.log(`[ft-scraper] Fetching event teams: ${url}`);
+
+  try {
+    const { getBrowser } = require('./browser');
+    const browser = await getBrowser();
+    const context = await browser.newContext({
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      viewport: { width: 1280, height: 800 },
+    });
+    const page = await context.newPage();
+
+    let scheduleJson = null;
+    page.on('response', async (response) => {
+      if (response.url().includes('schedule_ajax') && response.status() === 200) {
+        try { scheduleJson = await response.json(); } catch (e) {}
+      }
+    });
+
+    await page.goto(url, { waitUntil: 'load', timeout: 45000 });
+    await page.waitForTimeout(8000);
+    await context.close();
+
+    if (!scheduleJson?.schedules) {
+      console.log(`[ft-scraper] No schedule data for teams in ${eventSlug}`);
+      return [];
+    }
+
+    // Extract all unique team names from all games across all days
+    const teamSet = new Map();
+    for (const [dateKey, dayData] of Object.entries(scheduleJson.schedules)) {
+      if (!dayData.teams || !Array.isArray(dayData.teams)) continue;
+      for (const game of dayData.teams) {
+        if (game.team_name_1) teamSet.set(game.team_name_1.toLowerCase(), { name: game.team_name_1, division: game.division || '' });
+        if (game.team_name_2) teamSet.set(game.team_name_2.toLowerCase(), { name: game.team_name_2, division: game.division || '' });
+      }
+    }
+
+    const result = [...teamSet.values()].sort((a, b) => a.name.localeCompare(b.name));
+    console.log(`[ft-scraper] Found ${result.length} teams in event ${eventSlug}`);
+    return result;
+  } catch (err) {
+    console.log(`[ft-scraper] Error fetching event teams ${eventSlug}: ${err.message}`);
+    return [];
+  }
+}
+
 async function scrapeFiveToolTeam(teamUuid, season, orgId, teamId) {
   const url = teamUrl(season, teamUuid);
   console.log(`[ft-scraper] Fetching: ${url}`);
@@ -298,4 +347,4 @@ async function scrapeFiveToolTeam(teamUuid, season, orgId, teamId) {
   return result;
 }
 
-module.exports = { scrapeFiveToolTeam, FT_BASE, ftEventHash };
+module.exports = { scrapeFiveToolTeam, scrapeFtEventTeams, FT_BASE, ftEventHash };
