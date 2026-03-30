@@ -123,6 +123,14 @@ export function updateTeamMember(orgId, teamId, userId, role) {
   return authFetch('PUT', `/teams/${orgId}/${teamId}/members/${userId}`, { role });
 }
 
+export function joinTeam(orgId, teamId) {
+  return authFetch('POST', `/teams/${orgId}/${teamId}/join`);
+}
+
+export function leaveTeam(orgId, teamId) {
+  return authFetch('POST', `/teams/${orgId}/${teamId}/leave`);
+}
+
 export function removeTeamMember(orgId, teamId, userId) {
   return authFetch('DELETE', `/teams/${orgId}/${teamId}/members/${userId}`);
 }

@@ -596,6 +596,35 @@ router.delete('/teams/:orgId/:teamId/members/:userId', requireAdmin, async (req,
   }
 });
 
+// POST /api/teams/:orgId/:teamId/join - self-join as viewer
+router.post('/teams/:orgId/:teamId/join', requireAuth, async (req, res) => {
+  try {
+    const orgId = parseInt(req.params.orgId);
+    const teamId = parseInt(req.params.teamId);
+    // Check team exists
+    const team = await queries.getTeam(orgId, teamId);
+    if (!team) return res.status(404).json({ error: 'Team not found' });
+    // Add as viewer (won't overwrite existing higher role due to UPSERT)
+    const existing = await queries.getUserRoleForTeam(req.user.id, orgId, teamId);
+    if (!existing) {
+      await queries.setUserTeamRole(req.user.id, orgId, teamId, 'viewer');
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/teams/:orgId/:teamId/leave - self-remove from team
+router.post('/teams/:orgId/:teamId/leave', requireAuth, async (req, res) => {
+  try {
+    await queries.removeUserTeamRole(req.user.id, parseInt(req.params.orgId), parseInt(req.params.teamId));
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/scrape/:slug - trigger manual scrape for a team by slug
 router.post('/scrape/:slug', async (req, res) => {
   try {
