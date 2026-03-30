@@ -151,6 +151,11 @@ async function mutate(method, url, body) {
   return res.json();
 }
 
+// Fetch score from PG for a game missing its score
+export function fetchGameScore(gameId) {
+  return authFetch('POST', `/games/${gameId}/fetch-score`);
+}
+
 // Game score (calculated from play data)
 export function getGameScore(gameId) {
   return fetchJson(`/games/${gameId}/score`);

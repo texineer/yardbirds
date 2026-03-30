@@ -1,5 +1,6 @@
 const { scrapeTeamPage } = require('./team');
 const { scrapeTournamentPage, scrapePitchingReport, scrapeTournamentSchedule } = require('./tournament');
+const { scrapeGameScore } = require('./game');
 const { scrapeFiveToolTeam } = require('./fivetool');
 const queries = require('../db/queries');
 const { closeDb, saveDb } = require('../db/schema');
@@ -139,6 +140,40 @@ async function scrapeAll(orgId, teamId, year = DEFAULT_YEAR, ftTeamUuid = null, 
         const { closeBrowser } = require('./browser');
         await closeBrowser();
       } catch (e) {}
+    }
+
+    // Step 4: Fetch scores for PG games that don't have them yet
+    console.log('\n--- Fetching missing game scores ---');
+    const allGames = await queries.getTeamGames(orgId, teamId);
+    const gamesNeedingScores = allGames.filter(g => g.pg_game_id && !g.result && g.source !== 'ft');
+    console.log(`[scraper] ${gamesNeedingScores.length} games need scores`);
+    for (const game of gamesNeedingScores) {
+      try {
+        const score = await scrapeGameScore(game.pg_game_id);
+        if (score && score.isFinal) {
+          // Determine which score is ours
+          const team = await queries.getTeam(orgId, teamId);
+          const teamName = (team?.name || '').toLowerCase();
+          const homeIsUs = score.homeName.toLowerCase().includes(teamName) || teamName.includes(score.homeName.toLowerCase());
+          const scoreUs = homeIsUs ? score.homeScore : score.visitorScore;
+          const scoreThem = homeIsUs ? score.visitorScore : score.homeScore;
+          const result = scoreUs > scoreThem ? 'W' : scoreUs < scoreThem ? 'L' : 'T';
+          await queries.upsertGame({
+            pgGameId: game.pg_game_id,
+            pgEventId: game.pg_event_id,
+            teamOrgId: orgId, teamId: teamId,
+            opponentName: game.opponent_name,
+            opponentOrgId: game.opponent_org_id, opponentTeamId: game.opponent_team_id,
+            gameDate: game.game_date, gameTime: game.game_time, field: game.field,
+            scoreUs, scoreThem, result,
+            pgBoxUrl: game.pg_box_url, pgRecapUrl: game.pg_recap_url || '',
+          });
+          console.log(`[scraper] Score for game ${game.id}: ${scoreUs}-${scoreThem} (${result})`);
+        }
+        await sleep(500);
+      } catch (err) {
+        console.log(`[scraper] Score fetch error for game ${game.pg_game_id}: ${err.message}`);
+      }
     }
 
     saveDb();

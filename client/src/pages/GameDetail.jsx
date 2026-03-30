@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { getGame, getDailyPitchTotals, getOpponentPitchers, pitchSeverity, getScorebookState } from '../api'
+import { getGame, getDailyPitchTotals, getOpponentPitchers, pitchSeverity, getScorebookState, fetchGameScore } from '../api'
 import LoadingSpinner from '../components/LoadingSpinner'
 
 const DAILY_MAX = 95
@@ -16,7 +16,19 @@ export default function GameDetail() {
 
   useEffect(() => {
     getGame(gameId)
-      .then(g => { setGame(g); return g })
+      .then(g => {
+        setGame(g)
+        // If PG game has no score, try fetching it live
+        if (g && g.pg_game_id && !g.result && g.source !== 'ft') {
+          fetchGameScore(gameId)
+            .then(score => {
+              if (score?.result) {
+                setGame(prev => ({ ...prev, score_us: score.scoreUs, score_them: score.scoreThem, result: score.result }))
+              }
+            })
+            .catch(() => {})
+        }
+      })
       .catch(console.error)
       .finally(() => setLoading(false))
     getScorebookState(gameId)

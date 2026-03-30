@@ -356,6 +356,42 @@ router.post('/games', requireAuth, async (req, res) => {
 
 const requireScorekeeper = requireTeamRole(['admin', 'scorekeeper']);
 
+// POST /api/games/:gameId/fetch-score - scrape score from PG for a single game
+router.post('/games/:gameId/fetch-score', async (req, res) => {
+  try {
+    const game = await queries.getGame(parseInt(req.params.gameId));
+    if (!game) return res.status(404).json({ error: 'Game not found' });
+    if (!game.pg_game_id) return res.json({ error: 'No PG game ID' });
+
+    const { scrapeGameScore } = require('../scrapers/game');
+    const score = await scrapeGameScore(game.pg_game_id);
+    if (!score || !score.isFinal) return res.json({ score: null, message: 'Game not final or no score found' });
+
+    // Determine which side is ours
+    const team = await queries.getTeam(game.team_org_id, game.team_id);
+    const teamName = (team?.name || '').toLowerCase();
+    const homeIsUs = score.homeName.toLowerCase().includes(teamName) || teamName.includes(score.homeName.toLowerCase());
+    const scoreUs = homeIsUs ? score.homeScore : score.visitorScore;
+    const scoreThem = homeIsUs ? score.visitorScore : score.homeScore;
+    const result = scoreUs > scoreThem ? 'W' : scoreUs < scoreThem ? 'L' : 'T';
+
+    // Update game in DB
+    await queries.upsertGame({
+      pgGameId: game.pg_game_id, pgEventId: game.pg_event_id,
+      teamOrgId: game.team_org_id, teamId: game.team_id,
+      opponentName: game.opponent_name,
+      opponentOrgId: game.opponent_org_id, opponentTeamId: game.opponent_team_id,
+      gameDate: game.game_date, gameTime: game.game_time, field: game.field,
+      scoreUs, scoreThem, result,
+      pgBoxUrl: game.pg_box_url, pgRecapUrl: game.pg_recap_url || '',
+    });
+
+    res.json({ scoreUs, scoreThem, result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/games/:gameId/score
 router.get('/games/:gameId/score', async (req, res) => {
   try {
