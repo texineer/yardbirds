@@ -193,3 +193,9 @@ export function endScorebookGame(gameId, body) {
 export function registerTeam(body) {
   return authFetch('POST', '/teams', body);
 }
+
+// ── Create manual game (auth required) ────────────────────────────────────────
+
+export function createGame(teamOrgId, teamId, opponentName) {
+  return authFetch('POST', '/games', { teamOrgId, teamId, opponentName });
+}

@@ -130,6 +130,19 @@ async function upsertGame({ pgGameId, pgEventId, teamOrgId, teamId, opponentName
   `, [pgGameId, pgEventId, teamOrgId, teamId, opponentName, opponentOrgId, opponentTeamId, gameDate, gameTime, field, scoreUs, scoreThem, result, pgBoxUrl, pgRecapUrl]);
 }
 
+async function createManualGame({ teamOrgId, teamId, opponentName, gameDate }) {
+  const db = await getDb();
+  db.run(
+    `INSERT INTO games (team_org_id, team_id, opponent_name, game_date, source, scoring_status)
+     VALUES (?, ?, ?, ?, 'manual', 'none')`,
+    [teamOrgId, teamId, opponentName, gameDate]
+  );
+  const result = db.exec('SELECT last_insert_rowid() as id');
+  const id = result[0].values[0][0];
+  saveDb();
+  return id;
+}
+
 async function getTeamGames(orgId, teamId) {
   const db = await getDb();
   return all(db, `
@@ -540,7 +553,7 @@ module.exports = {
   upsertTeam, getTeam, getTeamBySlug, getAllTeams, registerTeam, searchTeams,
   upsertPlayer, getPlayers,
   upsertTournament, linkTeamTournament, getTeamTournaments, getTournament,
-  upsertGame, getTeamGames, getGame, getGameByPgId, getTournamentGames,
+  upsertGame, createManualGame, getTeamGames, getGame, getGameByPgId, getTournamentGames,
   insertPitchCount, clearPitchCounts, clearTournamentPitchCounts, getGamePitchCounts, getTournamentPitchCounts, getTournamentPitcherTotals,
   getDailyPitchTotals, getGamesPitchTotals,
   upsertFtTournament, upsertFtGame, getCombinedRecord, getOpponentPitcherTotals,

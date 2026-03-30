@@ -236,6 +236,19 @@ router.get('/tournaments/:eventId/pitching-report', async (req, res) => {
   }
 });
 
+// POST /api/games - create a manual game for live scoring
+router.post('/games', requireAuth, async (req, res) => {
+  try {
+    const { teamOrgId, teamId, opponentName } = req.body;
+    if (!teamOrgId || !teamId || !opponentName) return res.status(400).json({ error: 'teamOrgId, teamId, and opponentName required' });
+    const today = new Date().toISOString().split('T')[0];
+    const gameId = await queries.createManualGame({ teamOrgId: parseInt(teamOrgId), teamId: parseInt(teamId), opponentName, gameDate: today });
+    res.json({ gameId });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Live Scorebook ────────────────────────────────────────────────────────────
 
 const requireScorekeeper = requireTeamRole(['admin', 'scorekeeper']);

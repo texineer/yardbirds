@@ -11,6 +11,7 @@ import TournamentSchedule from './pages/TournamentSchedule'
 import TournamentBracket from './pages/TournamentBracket'
 import Landing from './pages/Landing'
 import Auth from './pages/Auth'
+import ScoreGame from './pages/ScoreGame'
 import LineupSetup from './pages/LineupSetup'
 import Scorebook from './pages/Scorebook'
 import LiveScoreboard from './pages/LiveScoreboard'
@@ -26,6 +27,7 @@ function App() {
         {/* Landing page — no header/nav */}
         <Route path="/" element={<Landing />} />
         <Route path="/login" element={<Auth />} />
+        <Route path="/score" element={<ScoreGame />} />
         {/* Team pages — with header/nav */}
         <Route path="/:slug/*" element={<TeamLayout />} />
       </Routes>
