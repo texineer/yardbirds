@@ -235,20 +235,19 @@ async function upsertFtTournament({ eventId, name, startDate, endDate, location,
   `, [eventId, name, startDate, endDate, location, ftUrl]);
 }
 
-async function upsertFtGame({ sourceGameKey, pgEventId, teamOrgId, teamId, opponentName, gameDate, scoreUs, scoreThem, result }) {
+async function upsertFtGame({ sourceGameKey, pgEventId, teamOrgId, teamId, opponentName, gameDate, gameTime, field, scoreUs, scoreThem, result }) {
   const db = await getDb();
-  // Check if game exists by source_game_key
   const existing = get(db, 'SELECT id FROM games WHERE source_game_key = ?', [sourceGameKey]);
   if (existing) {
     run(db, `
-      UPDATE games SET opponent_name=?, game_date=?, score_us=?, score_them=?, result=?
+      UPDATE games SET opponent_name=?, game_date=?, game_time=COALESCE(?, game_time), field=COALESCE(?, field), score_us=?, score_them=?, result=?
       WHERE source_game_key=?
-    `, [opponentName, gameDate, scoreUs, scoreThem, result, sourceGameKey]);
+    `, [opponentName, gameDate, gameTime || null, field || null, scoreUs, scoreThem, result, sourceGameKey]);
   } else {
     run(db, `
-      INSERT INTO games (pg_event_id, team_org_id, team_id, opponent_name, game_date, score_us, score_them, result, source, source_game_key)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ft', ?)
-    `, [pgEventId, teamOrgId, teamId, opponentName, gameDate, scoreUs, scoreThem, result, sourceGameKey]);
+      INSERT INTO games (pg_event_id, team_org_id, team_id, opponent_name, game_date, game_time, field, score_us, score_them, result, source, source_game_key)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ft', ?)
+    `, [pgEventId, teamOrgId, teamId, opponentName, gameDate, gameTime || '', field || '', scoreUs, scoreThem, result, sourceGameKey]);
   }
 }
 

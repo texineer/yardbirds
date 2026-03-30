@@ -116,6 +116,11 @@ async function scrapeAll(orgId = DEFAULT_ORG_ID, teamId = DEFAULT_TEAM_ID, year 
           console.error(`[ft-scraper] Error scraping ${ftSeason}: ${err.message}`);
         }
       }
+      // Close the Playwright browser after FT scraping
+      try {
+        const { closeBrowser } = require('./browser');
+        await closeBrowser();
+      } catch (e) {}
     }
 
     saveDb();
