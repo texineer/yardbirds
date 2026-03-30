@@ -253,6 +253,16 @@ router.post('/games', requireAuth, async (req, res) => {
 
 const requireScorekeeper = requireTeamRole(['admin', 'scorekeeper']);
 
+// GET /api/games/:gameId/spray-chart
+router.get('/games/:gameId/spray-chart', async (req, res) => {
+  try {
+    const data = await queries.getGameSprayChart(parseInt(req.params.gameId));
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/games/:gameId/scorebook
 router.get('/games/:gameId/scorebook', async (req, res) => {
   try {
@@ -359,8 +369,8 @@ router.post('/games/:gameId/scorebook/plate-appearance', requireScorekeeper, asy
 router.put('/games/:gameId/scorebook/plate-appearance/:paId', requireScorekeeper, async (req, res) => {
   try {
     const paId = parseInt(req.params.paId);
-    const { outcome, rbi, pitchSequence } = req.body;
-    await queries.updatePlateAppearanceOutcome({ paId, outcome, rbi, pitchSequence });
+    const { outcome, rbi, pitchSequence, hitType, hitX, hitY, fielder, runsScored } = req.body;
+    await queries.updatePlateAppearanceOutcome({ paId, outcome, rbi, pitchSequence, hitType, hitX, hitY, fielder, runsScored });
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

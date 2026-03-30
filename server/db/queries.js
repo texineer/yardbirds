@@ -337,7 +337,7 @@ async function initScorebookState({ gameId, homeTeamName, awayTeamName, ourSide 
   run(db, `UPDATE games SET scoring_status='lineup' WHERE id=?`, [gameId]);
 }
 
-async function updateScorebookState({ gameId, status, inning, half, outs, balls, strikes, runner1b, runner2b, runner3b }) {
+async function updateScorebookState({ gameId, status, inning, half, outs, balls, strikes, runner1b, runner2b, runner3b, homeBatterIdx, awayBatterIdx }) {
   const db = await getDb();
   const fields = [];
   const params = [];
@@ -350,6 +350,8 @@ async function updateScorebookState({ gameId, status, inning, half, outs, balls,
   if (runner1b !== undefined){ fields.push('runner_1b=?'); params.push(runner1b ?? null); }
   if (runner2b !== undefined){ fields.push('runner_2b=?'); params.push(runner2b ?? null); }
   if (runner3b !== undefined){ fields.push('runner_3b=?'); params.push(runner3b ?? null); }
+  if (homeBatterIdx !== undefined) { fields.push('home_batter_idx=?'); params.push(homeBatterIdx); }
+  if (awayBatterIdx !== undefined) { fields.push('away_batter_idx=?'); params.push(awayBatterIdx); }
   fields.push("updated_at=datetime('now')");
   params.push(gameId);
   run(db, `UPDATE game_scorebook SET ${fields.join(', ')} WHERE game_id=?`, params);
@@ -429,10 +431,10 @@ async function insertPlateAppearance({ gameId, inning, half, battingOrderPos, te
   return newId;
 }
 
-async function updatePlateAppearanceOutcome({ paId, outcome, rbi, pitchSequence }) {
+async function updatePlateAppearanceOutcome({ paId, outcome, rbi, pitchSequence, hitType, hitX, hitY, fielder, runsScored }) {
   const db = await getDb();
-  run(db, `UPDATE plate_appearances SET outcome=?, pitch_sequence=?, rbi=? WHERE id=?`,
-    [outcome, pitchSequence ?? null, rbi ?? 0, paId]);
+  run(db, `UPDATE plate_appearances SET outcome=?, pitch_sequence=?, rbi=?, hit_type=?, hit_x=?, hit_y=?, fielder=?, runs_scored=? WHERE id=?`,
+    [outcome, pitchSequence ?? null, rbi ?? 0, hitType ?? null, hitX ?? null, hitY ?? null, fielder ?? null, runsScored ?? 0, paId]);
 }
 
 // ── Live Pitches ─────────────────────────────────────────────────────────────
@@ -476,6 +478,30 @@ async function getFullScorebookState(gameId) {
   const pitchCounts = all(db, `SELECT pitcher_name, pitcher_team_side, COUNT(*) as total_pitches FROM live_pitches WHERE game_id=? GROUP BY pitcher_name, pitcher_team_side`, [gameId]);
   const plateAppearances = all(db, 'SELECT * FROM plate_appearances WHERE game_id=? ORDER BY pa_order DESC LIMIT 10', [gameId]);
   return { state, homeLineup, awayLineup, inningScores, pitchCounts, plateAppearances };
+}
+
+// ── Spray Chart ───────────────────────────────────────────────────────────
+
+async function getGameSprayChart(gameId) {
+  const db = await getDb();
+  return all(db, `
+    SELECT player_name, team_side, outcome, hit_type, hit_x, hit_y, fielder, inning, half
+    FROM plate_appearances
+    WHERE game_id = ? AND hit_x IS NOT NULL
+    ORDER BY pa_order
+  `, [gameId]);
+}
+
+async function getHalfInningStats(gameId, inning, half) {
+  const db = await getDb();
+  return get(db, `
+    SELECT
+      COALESCE(SUM(runs_scored), 0) as runs,
+      SUM(CASE WHEN outcome IN ('1B','2B','3B','HR') THEN 1 ELSE 0 END) as hits,
+      SUM(CASE WHEN outcome = 'E' THEN 1 ELSE 0 END) as errors
+    FROM plate_appearances
+    WHERE game_id = ? AND inning = ? AND half = ?
+  `, [gameId, inning, half]);
 }
 
 // ── Users & Roles ─────────────────────────────────────────────────────────
@@ -562,7 +588,7 @@ module.exports = {
   getLineup, upsertLineupEntry, recordSubstitution,
   getInningScores, upsertInningScore,
   getPlateAppearances, insertPlateAppearance, updatePlateAppearanceOutcome,
-  logPitch, getLivePitchCounts, deleteLastPitch, getFullScorebookState,
+  logPitch, getLivePitchCounts, deleteLastPitch, getFullScorebookState, getGameSprayChart, getHalfInningStats,
   // Auth
   createUser, getUserByEmail, getUserById, getUserTeamRoles, getUserRoleForTeam,
   setUserTeamRole, removeUserTeamRole, getTeamMembers, getTeamFromGameId,

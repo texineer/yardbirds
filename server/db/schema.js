@@ -226,6 +226,17 @@ function initSchema() {
   // Migration: add scoring_status to games
   try { db.run("ALTER TABLE games ADD COLUMN scoring_status TEXT DEFAULT 'none'"); } catch(e) {}
 
+  // Migration: add hit tracking fields to plate_appearances
+  try { db.run("ALTER TABLE plate_appearances ADD COLUMN hit_type TEXT"); } catch(e) {}
+  try { db.run("ALTER TABLE plate_appearances ADD COLUMN hit_x REAL"); } catch(e) {}
+  try { db.run("ALTER TABLE plate_appearances ADD COLUMN hit_y REAL"); } catch(e) {}
+  try { db.run("ALTER TABLE plate_appearances ADD COLUMN fielder TEXT"); } catch(e) {}
+  try { db.run("ALTER TABLE plate_appearances ADD COLUMN runs_scored INTEGER DEFAULT 0"); } catch(e) {}
+
+  // Migration: add batting order index tracking to game_scorebook
+  try { db.run("ALTER TABLE game_scorebook ADD COLUMN home_batter_idx INTEGER DEFAULT 0"); } catch(e) {}
+  try { db.run("ALTER TABLE game_scorebook ADD COLUMN away_batter_idx INTEGER DEFAULT 0"); } catch(e) {}
+
   db.run('CREATE INDEX IF NOT EXISTS idx_lineup_game ON lineup_entries(game_id, team_side)');
   db.run('CREATE INDEX IF NOT EXISTS idx_pa_game ON plate_appearances(game_id, pa_order)');
   db.run('CREATE INDEX IF NOT EXISTS idx_live_pitches_game ON live_pitches(game_id, pitcher_name)');
