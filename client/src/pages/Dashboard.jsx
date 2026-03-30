@@ -165,29 +165,27 @@ export default function Dashboard({ orgId, teamId, slug }) {
                   ) : (
                     <div className="font-display text-lg text-white leading-tight truncate">{t.name}</div>
                   )}
-                  <div className="flex items-center gap-2 mt-1">
-                    {t.start_date && (
-                      <span className="text-[10px] font-bold text-white/50">
-                        {formatDate(t.start_date)}{t.end_date && t.end_date !== t.start_date ? ` — ${formatDate(t.end_date)}` : ''}
-                      </span>
-                    )}
-                  </div>
+                  {t.start_date && (
+                    <div className="text-[10px] font-bold text-white/50 mt-1">
+                      {formatDate(t.start_date)}{t.end_date && t.end_date !== t.start_date ? ` — ${formatDate(t.end_date)}` : ''}
+                    </div>
+                  )}
+                </div>
+                <div className="flex flex-col gap-1.5 ml-2 flex-shrink-0">
                   {(t.location || t.pg_url) && (
                     <a href={t.source === 'ft' && t.pg_url ? `${t.pg_url}/venues` : t.pg_url || '#'}
                       target="_blank" rel="noopener"
-                      className="inline-flex items-center gap-1 mt-1 no-underline px-1.5 py-0.5 rounded"
-                      style={{ color: 'rgba(255,255,255,0.7)', background: 'rgba(255,255,255,0.08)' }}>
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                      className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded no-underline"
+                      style={{ background: 'rgba(212,168,50,0.2)', color: 'var(--gold)' }}>
+                      <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                         <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>
                       </svg>
-                      <span className="text-[10px] font-semibold truncate">{t.location || 'Venues'}</span>
+                      Venue
                     </a>
                   )}
-                </div>
-                <div className="flex gap-1.5 ml-2 flex-shrink-0">
                   {t.source !== 'ft' && (
                     <Link to={`tournament/${t.pg_event_id}/bracket`}
-                      className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded no-underline"
+                      className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded no-underline text-center"
                       style={{ background: 'rgba(212,168,50,0.2)', color: 'var(--gold)' }}>
                       Bracket
                     </Link>
