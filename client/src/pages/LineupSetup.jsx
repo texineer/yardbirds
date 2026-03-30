@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { getGame, getTeamBySlug, initScorebookGame, saveLineup, startScorebookGame } from '../api'
+import { getGame, getTeamBySlug, getTeams, initScorebookGame, saveLineup, startScorebookGame } from '../api'
 import { useAuth } from '../context/AuthContext'
 import LoadingSpinner from '../components/LoadingSpinner'
 
@@ -26,14 +26,25 @@ export default function LineupSetup() {
   )
   const [rosterSuggestions, setRosterSuggestions] = useState([])
   const [suggestingIdx, setSuggestingIdx] = useState(null)
+  const [opponentTeam, setOpponentTeam] = useState(null)
 
   useEffect(() => {
     Promise.all([
       getGame(gameId).catch(() => null),
       getTeamBySlug(slug).catch(() => null),
-    ]).then(([g, t]) => {
+      getTeams().catch(() => []),
+    ]).then(([g, t, allTeams]) => {
       setGame(g)
       setTeam(t)
+      // Find opponent team by name and load their roster
+      if (g?.opponent_name && allTeams.length) {
+        const oppTeam = allTeams.find(at => at.name === g.opponent_name)
+        if (oppTeam?.slug) {
+          getTeamBySlug(oppTeam.slug)
+            .then(setOpponentTeam)
+            .catch(() => {})
+        }
+      }
       setLoading(false)
     })
   }, [gameId, slug])
@@ -210,8 +221,11 @@ export default function LineupSetup() {
                     }}
                     onFocus={e => {
                       e.stopPropagation()
-                      if (activeTab === 'our') {
-                        setRosterSuggestions(team?.players || [])
+                      const players = activeTab === 'our'
+                        ? (team?.players || [])
+                        : (opponentTeam?.players || [])
+                      if (players.length > 0) {
+                        setRosterSuggestions(players)
                         setSuggestingIdx(key)
                       }
                     }}
