@@ -75,16 +75,18 @@ export default function Dashboard({ orgId, teamId, slug }) {
   const losses = cr ? String(cr.losses || 0) : '0'
   const ties = cr ? String(cr.ties || 0) : '0'
 
-  // Sort tournaments: upcoming first (nearest date), then past (most recent first)
+  // Sort tournaments by start date — next occurring first, then chronologically
   const now = new Date().toISOString().slice(0, 10)
   const tournaments = (schedule?.tournaments || []).slice().sort((a, b) => {
-    const dateA = a.tournament.start_date || ''
-    const dateB = b.tournament.start_date || ''
-    const aUp = dateA >= now
-    const bUp = dateB >= now
-    if (aUp && !bUp) return -1
-    if (!aUp && bUp) return 1
-    return aUp ? dateA.localeCompare(dateB) : dateB.localeCompare(dateA)
+    const dateA = a.tournament.start_date || '9999'
+    const dateB = b.tournament.start_date || '9999'
+    // Upcoming tournaments first (nearest date), then past (most recent first)
+    const aFuture = dateA >= now
+    const bFuture = dateB >= now
+    if (aFuture && !bFuture) return -1
+    if (!aFuture && bFuture) return 1
+    if (aFuture && bFuture) return dateA.localeCompare(dateB)  // nearest upcoming first
+    return dateB.localeCompare(dateA)  // most recent past first
   })
 
   return (
