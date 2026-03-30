@@ -160,7 +160,11 @@ export default function Dashboard({ orgId, teamId, slug }) {
             <div className="rounded-t-xl px-4 py-3" style={{ background: 'var(--navy)' }}>
               <div className="flex items-center justify-between">
                 <div className="flex-1 min-w-0">
-                  <div className="font-display text-lg text-white leading-tight truncate">{t.name}</div>
+                  {t.pg_url ? (
+                    <a href={t.pg_url} target="_blank" rel="noopener" className="font-display text-lg text-white leading-tight truncate block no-underline hover:underline">{t.name}</a>
+                  ) : (
+                    <div className="font-display text-lg text-white leading-tight truncate">{t.name}</div>
+                  )}
                   <div className="flex items-center gap-2 mt-1">
                     {t.start_date && (
                       <span className="text-[10px] font-bold text-white/50">
