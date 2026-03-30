@@ -268,17 +268,6 @@ export default function Landing() {
           </>
         )}
 
-        {/* Score Game button */}
-        {!authLoading && user && (
-          <div className="mt-8">
-            <Link
-              to="/score"
-              className="block w-full h-14 rounded-xl font-display text-xl tracking-widest text-white text-center leading-[3.5rem] no-underline active:scale-95 transition-transform"
-              style={{ background: 'var(--gold-dark, #b8891e)' }}>
-              SCORE GAME
-            </Link>
-          </div>
-        )}
       </main>
 
       {/* Footer */}

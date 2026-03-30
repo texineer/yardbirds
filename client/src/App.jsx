@@ -64,10 +64,12 @@ function TeamLayout() {
   )
 
   const isAdmin = user && hasTeamRole(team.pg_org_id, team.pg_team_id, ['admin'])
+  const canScore = user && hasTeamRole(team.pg_org_id, team.pg_team_id, ['admin', 'scorekeeper'])
 
   const navItems = [
     { path: `/${slug}`, label: 'Home', icon: HomeIcon },
     { path: `/${slug}/schedule`, label: 'Schedule', icon: CalendarIcon },
+    ...(canScore ? [{ path: '/score', label: 'Score', icon: ScoreIcon }] : []),
     { path: `/${slug}/search`, label: 'Teams', icon: SearchIcon },
     ...(isAdmin ? [{ path: `/${slug}/members`, label: 'Members', icon: MembersIcon }] : []),
   ]
@@ -164,6 +166,15 @@ function SearchIcon({ active }) {
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
       stroke={active ? 'var(--gold-dark)' : 'currentColor'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="11" cy="11" r="7" /><path d="M21 21l-4.35-4.35" />
+    </svg>
+  )
+}
+
+function ScoreIcon({ active }) {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+      stroke={active ? 'var(--gold-dark)' : 'currentColor'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 20V10" /><path d="M18 20V4" /><path d="M6 20v-4" />
     </svg>
   )
 }
