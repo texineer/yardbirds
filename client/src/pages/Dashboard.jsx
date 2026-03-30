@@ -298,33 +298,24 @@ function TeamsInTournament({ eventId, pgUrl, source, ageGroup }) {
 
       {/* Teams */}
       <div>
-        <div className="flex items-center justify-between mb-2">
-          <div className="text-[10px] font-bold uppercase tracking-[0.15em]" style={{ color: 'var(--navy-muted)' }}>
-            {ageGroup ? `${ageGroup} ` : ''}TEAMS ({teams.length})
-          </div>
+        <div className="text-[10px] font-bold uppercase tracking-[0.15em] mb-2" style={{ color: 'var(--navy-muted)' }}>
+          {ageGroup ? `${ageGroup} ` : ''}TEAMS ({teams.length})
         </div>
-        <div className="space-y-0.5">
+        <div className="grid grid-cols-2 gap-x-1 gap-y-0.5" style={{ fontSize: 0 }}>
           {teams.map((t, i) => (
             <a key={t.name + i}
               href={t.href || '#'}
               target={t.href ? '_blank' : undefined}
               rel="noopener"
-              className="flex items-center gap-2.5 px-3 py-2 rounded-lg no-underline transition-colors"
+              className="block truncate no-underline px-2 py-1.5 rounded transition-colors"
               style={{
-                background: i % 2 === 0 ? 'var(--sky)' : 'transparent',
+                fontSize: '11px',
+                lineHeight: '1.3',
+                fontWeight: 500,
+                color: 'var(--navy)',
+                background: i % 4 < 2 ? 'var(--sky)' : 'transparent',
               }}>
-              <span className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0"
-                style={{ background: 'var(--navy)', color: 'white' }}>
-                {t.name.charAt(0)}
-              </span>
-              <span className="text-sm font-medium flex-1 truncate" style={{ color: 'var(--navy)' }}>
-                {t.name}
-              </span>
-              {t.href && (
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--navy-muted)" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0 opacity-40">
-                  <path d="M9 6l6 6-6 6"/>
-                </svg>
-              )}
+              {t.name}
             </a>
           ))}
         </div>
