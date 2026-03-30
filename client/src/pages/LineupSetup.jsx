@@ -1,10 +1,19 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { getGame, getTeamBySlug, getTeams, initScorebookGame, saveLineup, startScorebookGame } from '../api'
 import { useAuth } from '../context/AuthContext'
 import LoadingSpinner from '../components/LoadingSpinner'
 
 const POSITIONS = ['P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH', 'EH']
+
+function buildLineupFromRoster(players) {
+  // Pre-fill lineup with all roster players (up to roster size)
+  return players.map(p => ({
+    playerName: p.name,
+    jerseyNumber: p.number || '',
+    position: p.position || '',
+  }))
+}
 
 export default function LineupSetup() {
   const { gameId, slug } = useParams()
@@ -18,13 +27,9 @@ export default function LineupSetup() {
   const [saving, setSaving] = useState(false)
   const [opponentTeam, setOpponentTeam] = useState(null)
 
-  // Lineup state: 9 slots each side
-  const [homeLineup, setHomeLineup] = useState(
-    Array.from({ length: 9 }, () => ({ playerName: '', jerseyNumber: '', position: '' }))
-  )
-  const [awayLineup, setAwayLineup] = useState(
-    Array.from({ length: 9 }, () => ({ playerName: '', jerseyNumber: '', position: '' }))
-  )
+  const [homeLineup, setHomeLineup] = useState([])
+  const [awayLineup, setAwayLineup] = useState([])
+  const [initialized, setInitialized] = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -37,12 +42,30 @@ export default function LineupSetup() {
       if (g?.opponent_name && allTeams.length) {
         const oppTeam = allTeams.find(at => at.name === g.opponent_name)
         if (oppTeam?.slug) {
-          getTeamBySlug(oppTeam.slug).then(setOpponentTeam).catch(() => {})
+          getTeamBySlug(oppTeam.slug).then(opp => {
+            setOpponentTeam(opp)
+            // Pre-fill away lineup with opponent roster
+            if (!initialized) {
+              setAwayLineup(buildLineupFromRoster(opp.players || []))
+            }
+          }).catch(() => {})
         }
+      }
+      // Pre-fill home lineup with our roster
+      if (!initialized && t?.players?.length) {
+        setHomeLineup(buildLineupFromRoster(t.players))
+        setInitialized(true)
       }
       setLoading(false)
     })
   }, [gameId, slug])
+
+  // Also set away lineup when opponentTeam loads (if home was set first)
+  useEffect(() => {
+    if (opponentTeam?.players?.length && awayLineup.length === 0) {
+      setAwayLineup(buildLineupFromRoster(opponentTeam.players))
+    }
+  }, [opponentTeam])
 
   const canScore = !authLoading && user && team && hasTeamRole(team.pg_org_id, team.pg_team_id, ['admin', 'scorekeeper'])
 
@@ -81,46 +104,6 @@ export default function LineupSetup() {
 
   const currentLineup = activeTab === 'our' ? ourLineup : themLineup
   const currentSetter = activeTab === 'our' ? ourSetter : themSetter
-  const currentRoster = activeTab === 'our' ? (team?.players || []) : (opponentTeam?.players || [])
-
-  // Players already in lineup
-  const assignedNames = new Set(currentLineup.filter(e => e.playerName).map(e => e.playerName))
-  const availablePlayers = currentRoster.filter(p => !assignedNames.has(p.name))
-
-  function assignPlayer(player) {
-    // Find first empty slot
-    const emptyIdx = currentLineup.findIndex(e => !e.playerName)
-    if (emptyIdx === -1) return
-    currentSetter(prev => {
-      const next = [...prev]
-      next[emptyIdx] = {
-        playerName: player.name,
-        jerseyNumber: player.number || '',
-        position: player.position || '',
-      }
-      return next
-    })
-  }
-
-  function removeFromSlot(idx) {
-    currentSetter(prev => {
-      const next = [...prev]
-      next[idx] = { playerName: '', jerseyNumber: '', position: '' }
-      return next
-    })
-  }
-
-  function moveSlot(fromIdx, direction) {
-    const toIdx = fromIdx + direction
-    if (toIdx < 0 || toIdx >= currentLineup.length) return
-    currentSetter(prev => {
-      const next = [...prev]
-      const temp = next[fromIdx]
-      next[fromIdx] = next[toIdx]
-      next[toIdx] = temp
-      return next
-    })
-  }
 
   const hasEnough = ourLineup.some(e => e.playerName) && themLineup.some(e => e.playerName)
 
@@ -133,8 +116,8 @@ export default function LineupSetup() {
 
       await initScorebookGame(parseInt(gameId), { homeTeamName, awayTeamName, ourSide })
 
-      const homeEntries = homeLineup.map((e, i) => ({ battingOrder: i + 1, ...e }))
-      const awayEntries = awayLineup.map((e, i) => ({ battingOrder: i + 1, ...e }))
+      const homeEntries = homeLineup.filter(e => e.playerName).map((e, i) => ({ battingOrder: i + 1, ...e }))
+      const awayEntries = awayLineup.filter(e => e.playerName).map((e, i) => ({ battingOrder: i + 1, ...e }))
       await saveLineup(parseInt(gameId), { teamSide: 'home', entries: homeEntries })
       await saveLineup(parseInt(gameId), { teamSide: 'away', entries: awayEntries })
       await startScorebookGame(parseInt(gameId))
@@ -189,7 +172,7 @@ export default function LineupSetup() {
           const label = tab === 'our'
             ? (team?.name?.toUpperCase() || 'OUR TEAM')
             : (game?.opponent_name?.toUpperCase() || 'OPPONENT')
-          const count = (tab === 'our' ? ourLineup : themLineup).filter(e => e.playerName).length
+          const lineup = tab === 'our' ? ourLineup : themLineup
           return (
             <button key={tab}
               className="flex-1 py-2.5 rounded-lg font-display text-base tracking-wider transition-all"
@@ -199,124 +182,17 @@ export default function LineupSetup() {
               }}
               onClick={() => setActiveTab(tab)}>
               <span className="truncate block px-1">{label}</span>
-              <span className="text-[10px] opacity-70">{count}/9</span>
+              <span className="text-[10px] opacity-70">{lineup.length} players</span>
             </button>
           )
         })}
       </div>
 
-      {/* Batting Order Slots */}
+      {/* Draggable Lineup */}
       <div>
-        <div className="section-label mb-2">BATTING ORDER</div>
-        <div className="space-y-1.5">
-          {currentLineup.map((entry, idx) => {
-            const filled = !!entry.playerName
-            return (
-              <div key={idx}
-                className="flex items-center gap-2 py-2 px-2 rounded-xl transition-all"
-                style={{
-                  borderLeft: `3px solid ${filled ? 'var(--gold)' : 'var(--border)'}`,
-                  background: filled ? 'rgba(212,168,50,0.06)' : 'var(--cream)',
-                }}>
-                <span className="font-display text-lg w-6 text-center flex-shrink-0"
-                  style={{ color: 'var(--navy-muted)' }}>{idx + 1}</span>
-
-                {filled ? (
-                  <>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-semibold truncate" style={{ color: 'var(--navy)' }}>
-                        {entry.playerName}
-                      </div>
-                      <div className="flex gap-2 items-center">
-                        {entry.jerseyNumber && (
-                          <span className="text-xs" style={{ color: 'var(--gold-dark, #b8891e)' }}>#{entry.jerseyNumber}</span>
-                        )}
-                        {entry.position && (
-                          <span className="text-xs font-bold" style={{ color: 'var(--navy-muted)' }}>{entry.position}</span>
-                        )}
-                      </div>
-                    </div>
-                    {/* Reorder arrows */}
-                    <div className="flex flex-col gap-0.5">
-                      <button className="w-7 h-5 rounded text-xs flex items-center justify-center"
-                        style={{ background: 'var(--sky)', color: idx === 0 ? 'var(--border)' : 'var(--navy)' }}
-                        disabled={idx === 0}
-                        onClick={() => moveSlot(idx, -1)}>
-                        ▲
-                      </button>
-                      <button className="w-7 h-5 rounded text-xs flex items-center justify-center"
-                        style={{ background: 'var(--sky)', color: idx === currentLineup.length - 1 ? 'var(--border)' : 'var(--navy)' }}
-                        disabled={idx === currentLineup.length - 1}
-                        onClick={() => moveSlot(idx, 1)}>
-                        ▼
-                      </button>
-                    </div>
-                    {/* Remove */}
-                    <button className="w-8 h-8 rounded-lg flex items-center justify-center text-sm active:scale-95"
-                      style={{ background: 'var(--loss-bg, #fdecea)', color: 'var(--loss)' }}
-                      onClick={() => removeFromSlot(idx)}>
-                      ✕
-                    </button>
-                  </>
-                ) : (
-                  <div className="flex-1 text-sm italic py-1.5" style={{ color: 'var(--navy-muted)' }}>
-                    Tap a player below to add
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
+        <div className="section-label mb-2">BATTING ORDER — drag to reorder</div>
+        <DraggableLineup lineup={currentLineup} setLineup={currentSetter} />
       </div>
-
-      {/* Available Players */}
-      {currentRoster.length > 0 && (
-        <div>
-          <div className="section-label mb-2">
-            AVAILABLE PLAYERS ({availablePlayers.length})
-          </div>
-          {availablePlayers.length === 0 ? (
-            <div className="text-sm text-center py-4" style={{ color: 'var(--navy-muted)' }}>
-              All players assigned to lineup
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-1.5">
-              {availablePlayers.map(player => (
-                <button key={player.id || player.name}
-                  className="flex items-center gap-2 p-2.5 rounded-xl text-left active:scale-95 transition-transform"
-                  style={{ background: 'var(--sky)', border: '1px solid var(--border)' }}
-                  onClick={() => assignPlayer(player)}>
-                  <span className="w-8 h-8 rounded-full flex items-center justify-center font-display text-sm text-white flex-shrink-0"
-                    style={{ background: 'var(--navy)' }}>
-                    {player.number || player.name.charAt(0)}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold truncate" style={{ color: 'var(--navy)' }}>
-                      {player.name}
-                    </div>
-                    <div className="text-[10px] font-bold" style={{ color: 'var(--navy-muted)' }}>
-                      {player.position || '—'}
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Manual add (when no roster) */}
-      {currentRoster.length === 0 && (
-        <ManualAddForm onAdd={(name) => {
-          const emptyIdx = currentLineup.findIndex(e => !e.playerName)
-          if (emptyIdx === -1) return
-          currentSetter(prev => {
-            const next = [...prev]
-            next[emptyIdx] = { playerName: name, jerseyNumber: '', position: '' }
-            return next
-          })
-        }} />
-      )}
 
       {/* Save & Start */}
       <button
@@ -328,36 +204,160 @@ export default function LineupSetup() {
       </button>
 
       <p className="text-center text-xs" style={{ color: 'var(--navy-muted)' }}>
-        Tap players to add. Use arrows to reorder. You can add more during the game.
+        All roster players are pre-loaded. Drag to set batting order. Remove players who aren't in this game.
       </p>
     </div>
   )
 }
 
-function ManualAddForm({ onAdd }) {
-  const [name, setName] = useState('')
+// ── Draggable Lineup ──────────────────────────────────────────────────────────
+
+function DraggableLineup({ lineup, setLineup }) {
+  const [dragIdx, setDragIdx] = useState(null)
+  const [overIdx, setOverIdx] = useState(null)
+  const listRef = useRef(null)
+  const dragStartY = useRef(0)
+  const dragItemHeight = useRef(0)
+
+  // Touch drag handlers
+  function handleTouchStart(idx, e) {
+    const touch = e.touches[0]
+    const el = e.currentTarget
+    dragStartY.current = touch.clientY
+    dragItemHeight.current = el.getBoundingClientRect().height + 6 // gap
+    setDragIdx(idx)
+    setOverIdx(idx)
+  }
+
+  function handleTouchMove(e) {
+    if (dragIdx === null) return
+    e.preventDefault()
+    const touch = e.touches[0]
+    const diff = touch.clientY - dragStartY.current
+    const slotsMoved = Math.round(diff / dragItemHeight.current)
+    const newOver = Math.max(0, Math.min(lineup.length - 1, dragIdx + slotsMoved))
+    setOverIdx(newOver)
+  }
+
+  function handleTouchEnd() {
+    if (dragIdx !== null && overIdx !== null && dragIdx !== overIdx) {
+      setLineup(prev => {
+        const next = [...prev]
+        const [item] = next.splice(dragIdx, 1)
+        next.splice(overIdx, 0, item)
+        return next
+      })
+    }
+    setDragIdx(null)
+    setOverIdx(null)
+  }
+
+  // Mouse drag (for desktop)
+  function handleDragStart(idx) {
+    setDragIdx(idx)
+  }
+
+  function handleDragOver(idx, e) {
+    e.preventDefault()
+    setOverIdx(idx)
+  }
+
+  function handleDrop() {
+    if (dragIdx !== null && overIdx !== null && dragIdx !== overIdx) {
+      setLineup(prev => {
+        const next = [...prev]
+        const [item] = next.splice(dragIdx, 1)
+        next.splice(overIdx, 0, item)
+        return next
+      })
+    }
+    setDragIdx(null)
+    setOverIdx(null)
+  }
+
+  function handleDragEnd() {
+    setDragIdx(null)
+    setOverIdx(null)
+  }
+
+  function removePlayer(idx) {
+    setLineup(prev => prev.filter((_, i) => i !== idx))
+  }
+
   return (
-    <div className="card p-3">
-      <div className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--navy-muted)' }}>
-        ADD PLAYER
-      </div>
-      <div className="flex gap-2">
-        <input
-          className="flex-1 h-10 px-3 rounded-lg border text-sm font-medium focus:outline-none"
-          style={{ borderColor: 'var(--border)', color: 'var(--navy)', background: 'var(--cream)' }}
-          placeholder="Player name..."
-          value={name}
-          onChange={e => setName(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter' && name.trim()) { onAdd(name.trim()); setName('') } }}
-        />
-        <button
-          className="h-10 px-4 rounded-lg font-display text-sm tracking-wider text-white active:scale-95"
-          style={{ background: name.trim() ? 'var(--navy)' : 'var(--navy-muted)' }}
-          disabled={!name.trim()}
-          onClick={() => { onAdd(name.trim()); setName('') }}>
-          ADD
-        </button>
-      </div>
+    <div ref={listRef}
+      className="space-y-1.5"
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+    >
+      {lineup.map((entry, idx) => {
+        const isDragging = dragIdx === idx
+        const isOver = overIdx === idx && dragIdx !== null && dragIdx !== idx
+        return (
+          <div
+            key={`${entry.playerName}-${idx}`}
+            draggable
+            onDragStart={() => handleDragStart(idx)}
+            onDragOver={(e) => handleDragOver(idx, e)}
+            onDrop={handleDrop}
+            onDragEnd={handleDragEnd}
+            onTouchStart={(e) => handleTouchStart(idx, e)}
+            className="flex items-center gap-2 py-2.5 px-3 rounded-xl transition-all select-none"
+            style={{
+              background: isDragging ? 'var(--gold)' : isOver ? 'rgba(212,168,50,0.15)' : 'var(--cream)',
+              border: isOver ? '2px dashed var(--gold)' : '1px solid var(--border)',
+              opacity: isDragging ? 0.7 : 1,
+              cursor: 'grab',
+              touchAction: 'none',
+            }}
+          >
+            {/* Drag handle */}
+            <span className="text-base flex-shrink-0 select-none" style={{ color: 'var(--navy-muted)', cursor: 'grab' }}>
+              ≡
+            </span>
+
+            {/* Order number */}
+            <span className="font-display text-lg w-6 text-center flex-shrink-0"
+              style={{ color: 'var(--navy)' }}>
+              {idx + 1}
+            </span>
+
+            {/* Player info */}
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-semibold truncate" style={{ color: 'var(--navy)' }}>
+                {entry.playerName}
+              </div>
+              <div className="flex gap-2 items-center">
+                {entry.jerseyNumber && (
+                  <span className="text-[10px] font-bold" style={{ color: 'var(--gold-dark, #b8891e)' }}>
+                    #{entry.jerseyNumber}
+                  </span>
+                )}
+                {entry.position && (
+                  <span className="text-[10px] font-bold" style={{ color: 'var(--navy-muted)' }}>
+                    {entry.position}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Remove */}
+            <button
+              className="w-7 h-7 rounded-lg flex items-center justify-center text-xs active:scale-95 flex-shrink-0"
+              style={{ background: 'var(--loss-bg, #fdecea)', color: 'var(--loss)' }}
+              onClick={(e) => { e.stopPropagation(); removePlayer(idx) }}
+              onTouchEnd={(e) => { e.stopPropagation() }}>
+              ✕
+            </button>
+          </div>
+        )
+      })}
+
+      {lineup.length === 0 && (
+        <div className="text-sm text-center py-8 italic" style={{ color: 'var(--navy-muted)' }}>
+          No players loaded for this team
+        </div>
+      )}
     </div>
   )
 }
