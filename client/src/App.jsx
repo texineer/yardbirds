@@ -9,6 +9,9 @@ import TeamSearch from './pages/TeamSearch'
 import TournamentSchedule from './pages/TournamentSchedule'
 import TournamentBracket from './pages/TournamentBracket'
 import Landing from './pages/Landing'
+import LineupSetup from './pages/LineupSetup'
+import Scorebook from './pages/Scorebook'
+import LiveScoreboard from './pages/LiveScoreboard'
 import LoadingSpinner from './components/LoadingSpinner'
 
 function App() {
@@ -84,6 +87,9 @@ function TeamLayout() {
           <Route path="/" element={<Dashboard orgId={team.pg_org_id} teamId={team.pg_team_id} slug={slug} />} />
           <Route path="/schedule" element={<Schedule orgId={team.pg_org_id} teamId={team.pg_team_id} />} />
           <Route path="/game/:gameId" element={<GameDetail />} />
+          <Route path="/game/:gameId/lineup" element={<LineupSetup />} />
+          <Route path="/game/:gameId/score" element={<Scorebook />} />
+          <Route path="/game/:gameId/live" element={<LiveScoreboard />} />
           <Route path="/tournament/:eventId/pitching" element={<PitchingReport />} />
           <Route path="/tournament/:eventId/schedule" element={<TournamentSchedule />} />
           <Route path="/tournament/:eventId/bracket" element={<TournamentBracket />} />

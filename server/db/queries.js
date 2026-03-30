@@ -304,6 +304,167 @@ async function getOpponentPitcherTotals(eventId, opponentName) {
   `, [eventId, opponentName]);
 }
 
+// ── Live Scorebook ──────────────────────────────────────────────────────────
+
+async function getScorebookState(gameId) {
+  const db = await getDb();
+  return get(db, 'SELECT * FROM game_scorebook WHERE game_id = ?', [gameId]);
+}
+
+async function initScorebookState({ gameId, homeTeamName, awayTeamName, ourSide }) {
+  const db = await getDb();
+  run(db, `
+    INSERT INTO game_scorebook (game_id, status, home_team_name, away_team_name, our_side)
+    VALUES (?, 'lineup', ?, ?, ?)
+    ON CONFLICT(game_id) DO UPDATE SET
+      status='lineup', home_team_name=excluded.home_team_name,
+      away_team_name=excluded.away_team_name, our_side=excluded.our_side,
+      updated_at=datetime('now')
+  `, [gameId, homeTeamName, awayTeamName, ourSide]);
+  run(db, `UPDATE games SET scoring_status='lineup' WHERE id=?`, [gameId]);
+}
+
+async function updateScorebookState({ gameId, status, inning, half, outs, balls, strikes, runner1b, runner2b, runner3b }) {
+  const db = await getDb();
+  const fields = [];
+  const params = [];
+  if (status !== undefined)  { fields.push('status=?');   params.push(status); }
+  if (inning !== undefined)  { fields.push('inning=?');   params.push(inning); }
+  if (half !== undefined)    { fields.push('half=?');     params.push(half); }
+  if (outs !== undefined)    { fields.push('outs=?');     params.push(outs); }
+  if (balls !== undefined)   { fields.push('balls=?');    params.push(balls); }
+  if (strikes !== undefined) { fields.push('strikes=?');  params.push(strikes); }
+  if (runner1b !== undefined){ fields.push('runner_1b=?'); params.push(runner1b ?? null); }
+  if (runner2b !== undefined){ fields.push('runner_2b=?'); params.push(runner2b ?? null); }
+  if (runner3b !== undefined){ fields.push('runner_3b=?'); params.push(runner3b ?? null); }
+  fields.push("updated_at=datetime('now')");
+  params.push(gameId);
+  run(db, `UPDATE game_scorebook SET ${fields.join(', ')} WHERE game_id=?`, params);
+}
+
+async function startGame(gameId) {
+  const db = await getDb();
+  run(db, `UPDATE game_scorebook SET status='in_progress', started_at=datetime('now'), updated_at=datetime('now') WHERE game_id=?`, [gameId]);
+  run(db, `UPDATE games SET scoring_status='live' WHERE id=?`, [gameId]);
+}
+
+async function endGame(gameId, scoreUs, scoreThem) {
+  const db = await getDb();
+  const result = scoreUs > scoreThem ? 'W' : scoreUs < scoreThem ? 'L' : 'T';
+  run(db, `UPDATE game_scorebook SET status='final', ended_at=datetime('now'), updated_at=datetime('now') WHERE game_id=?`, [gameId]);
+  run(db, `UPDATE games SET score_us=?, score_them=?, result=?, scoring_status='final' WHERE id=?`, [scoreUs, scoreThem, result, gameId]);
+}
+
+// ── Lineup ──────────────────────────────────────────────────────────────────
+
+async function getLineup(gameId, teamSide) {
+  const db = await getDb();
+  return all(db, `SELECT * FROM lineup_entries WHERE game_id=? AND team_side=? ORDER BY batting_order`, [gameId, teamSide]);
+}
+
+async function upsertLineupEntry({ gameId, teamSide, battingOrder, playerName, jerseyNumber, position }) {
+  const db = await getDb();
+  const existing = get(db, `SELECT id FROM lineup_entries WHERE game_id=? AND team_side=? AND batting_order=? AND active=1`, [gameId, teamSide, battingOrder]);
+  if (existing) {
+    run(db, `UPDATE lineup_entries SET player_name=?, jersey_number=?, position=? WHERE id=?`,
+      [playerName, jerseyNumber ?? null, position ?? null, existing.id]);
+  } else {
+    run(db, `INSERT INTO lineup_entries (game_id, team_side, batting_order, player_name, jersey_number, position) VALUES (?, ?, ?, ?, ?, ?)`,
+      [gameId, teamSide, battingOrder, playerName, jerseyNumber ?? null, position ?? null]);
+  }
+}
+
+async function recordSubstitution({ gameId, teamSide, battingOrder, newPlayerName, jerseyNumber, position }) {
+  const db = await getDb();
+  run(db, `UPDATE lineup_entries SET active=0 WHERE game_id=? AND team_side=? AND batting_order=? AND active=1`, [gameId, teamSide, battingOrder]);
+  run(db, `INSERT INTO lineup_entries (game_id, team_side, batting_order, player_name, jersey_number, position) VALUES (?, ?, ?, ?, ?, ?)`,
+    [gameId, teamSide, battingOrder, newPlayerName, jerseyNumber ?? null, position ?? null]);
+}
+
+// ── Inning Scores ────────────────────────────────────────────────────────────
+
+async function getInningScores(gameId) {
+  const db = await getDb();
+  return all(db, 'SELECT * FROM inning_scores WHERE game_id=? ORDER BY inning, half', [gameId]);
+}
+
+async function upsertInningScore({ gameId, inning, half, runs, hits, errors }) {
+  const db = await getDb();
+  run(db, `
+    INSERT INTO inning_scores (game_id, inning, half, runs, hits, errors)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(game_id, inning, half) DO UPDATE SET runs=excluded.runs, hits=excluded.hits, errors=excluded.errors
+  `, [gameId, inning, half, runs, hits, errors]);
+}
+
+// ── Plate Appearances ────────────────────────────────────────────────────────
+
+async function getPlateAppearances(gameId) {
+  const db = await getDb();
+  return all(db, 'SELECT * FROM plate_appearances WHERE game_id=? ORDER BY pa_order', [gameId]);
+}
+
+async function insertPlateAppearance({ gameId, inning, half, battingOrderPos, teamSide, playerName, pitcherName }) {
+  const db = await getDb();
+  const maxPa = get(db, 'SELECT MAX(pa_order) as m FROM plate_appearances WHERE game_id=?', [gameId]);
+  const nextOrder = (maxPa?.m ?? 0) + 1;
+  db.run(`INSERT INTO plate_appearances (game_id, inning, half, batting_order_pos, team_side, player_name, pitcher_name, pa_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [gameId, inning, half, battingOrderPos, teamSide, playerName, pitcherName ?? null, nextOrder]);
+  const idResult = db.exec('SELECT last_insert_rowid() as id');
+  const newId = idResult[0].values[0][0];
+  saveDb();
+  return newId;
+}
+
+async function updatePlateAppearanceOutcome({ paId, outcome, rbi, pitchSequence }) {
+  const db = await getDb();
+  run(db, `UPDATE plate_appearances SET outcome=?, pitch_sequence=?, rbi=? WHERE id=?`,
+    [outcome, pitchSequence ?? null, rbi ?? 0, paId]);
+}
+
+// ── Live Pitches ─────────────────────────────────────────────────────────────
+
+async function logPitch({ gameId, paId, pitcherName, pitcherTeamSide, pitchType, inning, half }) {
+  const db = await getDb();
+  const maxSeq = get(db, 'SELECT MAX(pitch_seq) as m FROM live_pitches WHERE game_id=? AND pitcher_name=?', [gameId, pitcherName]);
+  const nextSeq = (maxSeq?.m ?? 0) + 1;
+  run(db, `INSERT INTO live_pitches (game_id, pa_id, pitcher_name, pitcher_team_side, pitch_type, inning, half, pitch_seq) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [gameId, paId ?? null, pitcherName, pitcherTeamSide, pitchType, inning, half, nextSeq]);
+}
+
+async function getLivePitchCounts(gameId) {
+  const db = await getDb();
+  return all(db, `
+    SELECT
+      pitcher_name,
+      pitcher_team_side,
+      COUNT(*) as total_pitches,
+      SUM(CASE WHEN pitch_type='S' OR pitch_type='C' THEN 1 ELSE 0 END) as strikes,
+      SUM(CASE WHEN pitch_type='B' THEN 1 ELSE 0 END) as balls
+    FROM live_pitches
+    WHERE game_id=?
+    GROUP BY pitcher_name, pitcher_team_side
+    ORDER BY total_pitches DESC
+  `, [gameId]);
+}
+
+async function deleteLastPitch(gameId) {
+  const db = await getDb();
+  run(db, 'DELETE FROM live_pitches WHERE id = (SELECT MAX(id) FROM live_pitches WHERE game_id=?)', [gameId]);
+}
+
+async function getFullScorebookState(gameId) {
+  const db = await getDb();
+  const state = get(db, 'SELECT * FROM game_scorebook WHERE game_id=?', [gameId]);
+  if (!state) return null;
+  const homeLineup = all(db, `SELECT * FROM lineup_entries WHERE game_id=? AND team_side='home' ORDER BY batting_order`, [gameId]);
+  const awayLineup = all(db, `SELECT * FROM lineup_entries WHERE game_id=? AND team_side='away' ORDER BY batting_order`, [gameId]);
+  const inningScores = all(db, 'SELECT * FROM inning_scores WHERE game_id=? ORDER BY inning, half', [gameId]);
+  const pitchCounts = all(db, `SELECT pitcher_name, pitcher_team_side, COUNT(*) as total_pitches FROM live_pitches WHERE game_id=? GROUP BY pitcher_name, pitcher_team_side`, [gameId]);
+  const plateAppearances = all(db, 'SELECT * FROM plate_appearances WHERE game_id=? ORDER BY pa_order DESC LIMIT 10', [gameId]);
+  return { state, homeLineup, awayLineup, inningScores, pitchCounts, plateAppearances };
+}
+
 module.exports = {
   upsertTeam, getTeam, getTeamBySlug, getAllTeams, registerTeam, searchTeams,
   upsertPlayer, getPlayers,
@@ -312,4 +473,10 @@ module.exports = {
   insertPitchCount, clearPitchCounts, clearTournamentPitchCounts, getGamePitchCounts, getTournamentPitchCounts, getTournamentPitcherTotals,
   getDailyPitchTotals, getGamesPitchTotals,
   upsertFtTournament, upsertFtGame, getCombinedRecord, getOpponentPitcherTotals,
+  // Live scorebook
+  getScorebookState, initScorebookState, updateScorebookState, startGame, endGame,
+  getLineup, upsertLineupEntry, recordSubstitution,
+  getInningScores, upsertInningScore,
+  getPlateAppearances, insertPlateAppearance, updatePlateAppearanceOutcome,
+  logPitch, getLivePitchCounts, deleteLastPitch, getFullScorebookState,
 };

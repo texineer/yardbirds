@@ -32,7 +32,11 @@
       "Bash(scp \"C:/Users/Ray/Documents/Texineer/yardbirds/data/yardbirds.db\" root@172.30.10.176:/opt/roughriders/data/yardbirds.db)",
       "Bash(cp data/yardbirds.db data/yardbirds_yb.db)",
       "Bash(scp root@172.30.10.176:/opt/roughriders/data/yardbirds.db data/yardbirds.db)",
-      "Bash(grep -oP 'window\\\\.\\\\w+ = [^;]{0,500}' ft_event_temp.html)"
+      "Bash(grep -oP 'window\\\\.\\\\w+ = [^;]{0,500}' ft_event_temp.html)",
+      "Bash(nslookup bleacherbox.app)",
+      "Bash(nslookup -type=NS bleacherbox.app)",
+      "Bash(nslookup -type=CNAME bleacherbox.app)",
+      "Bash(ssh root@172.30.10.111 \"cd /opt/yardbirds && node -e \"\":*)"
     ]
   }
 }

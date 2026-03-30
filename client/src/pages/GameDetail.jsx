@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { getGame, getDailyPitchTotals, getOpponentPitchers, pitchSeverity } from '../api'
+import { getGame, getDailyPitchTotals, getOpponentPitchers, pitchSeverity, getScorebookState } from '../api'
 import LoadingSpinner from '../components/LoadingSpinner'
 
 const DAILY_MAX = 95
@@ -12,12 +12,16 @@ export default function GameDetail() {
   const [dailyTotals, setDailyTotals] = useState(null)
   const [showDaily, setShowDaily] = useState(false)
   const [opponentPitchers, setOpponentPitchers] = useState(null)
+  const [scorebookStatus, setScorebookStatus] = useState(null)
 
   useEffect(() => {
     getGame(gameId)
-      .then(setGame)
+      .then(g => { setGame(g); return g })
       .catch(console.error)
       .finally(() => setLoading(false))
+    getScorebookState(gameId)
+      .then(d => setScorebookStatus(d?.state?.status ?? null))
+      .catch(() => {})
   }, [gameId])
 
   // Auto-load opponent pitcher data
@@ -51,6 +55,39 @@ export default function GameDetail() {
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
         Schedule
       </Link>
+
+      {/* Live Scoring Banners */}
+      {(scorebookStatus === 'in_progress' || scorebookStatus === 'live') && (
+        <Link to="live" className="card flex items-center gap-3 px-4 py-3 no-underline"
+          style={{ borderLeft: '4px solid var(--win)' }}>
+          <span className="relative flex h-2.5 w-2.5 flex-shrink-0">
+            <span className="absolute inset-0 rounded-full animate-ping opacity-75" style={{ background: 'var(--win)' }} />
+            <span className="relative rounded-full h-2.5 w-2.5" style={{ background: 'var(--win)' }} />
+          </span>
+          <span className="font-display text-lg tracking-widest" style={{ color: 'var(--win)' }}>LIVE</span>
+          <span className="text-sm font-semibold flex-1" style={{ color: 'var(--navy)' }}>View live scoreboard</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--navy-muted)" strokeWidth="2"><path d="M9 18l6-6-6-6"/></svg>
+        </Link>
+      )}
+      {scorebookStatus === 'final' && (
+        <Link to="live" className="card flex items-center gap-3 px-4 py-3 no-underline"
+          style={{ borderLeft: '4px solid var(--navy-muted, #6b7c8d)' }}>
+          <span className="font-display text-base tracking-widest" style={{ color: 'var(--navy)' }}>VIEW SCOREBOOK</span>
+          <span className="text-xs flex-1" style={{ color: 'var(--navy-muted)' }}>Full play-by-play</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--navy-muted)" strokeWidth="2"><path d="M9 18l6-6-6-6"/></svg>
+        </Link>
+      )}
+      {!game?.result && !scorebookStatus && (
+        <Link to="lineup" className="card flex items-center gap-3 px-4 py-3 no-underline"
+          style={{ borderLeft: '4px solid var(--gold)' }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2" strokeLinecap="round">
+            <path d="M12 2a5 5 0 110 10A5 5 0 0112 2z"/><circle cx="12" cy="12" r="2.5" fill="var(--gold)"/>
+          </svg>
+          <span className="font-display text-base tracking-widest" style={{ color: 'var(--navy)' }}>SCORE THIS GAME</span>
+          <span className="text-xs flex-1" style={{ color: 'var(--navy-muted)' }}>Scorekeeper access required</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--navy-muted)" strokeWidth="2"><path d="M9 18l6-6-6-6"/></svg>
+        </Link>
+      )}
 
       {/* Game Hero */}
       <div className="card overflow-hidden">

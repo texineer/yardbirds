@@ -233,6 +233,185 @@ router.get('/tournaments/:eventId/pitching-report', async (req, res) => {
   }
 });
 
+// ── Live Scorebook ────────────────────────────────────────────────────────────
+
+function requirePin(req, res, next) {
+  const pin = process.env.SCOREKEEPER_PIN;
+  if (!pin) return res.status(503).json({ error: 'Scoring not enabled (SCOREKEEPER_PIN not set)' });
+  const provided = req.headers['x-scorekeeper-pin'] || req.body?.pin;
+  if (provided !== pin) return res.status(401).json({ error: 'Invalid PIN' });
+  next();
+}
+
+// GET /api/games/:gameId/scorebook
+router.get('/games/:gameId/scorebook', async (req, res) => {
+  try {
+    const data = await queries.getFullScorebookState(parseInt(req.params.gameId));
+    if (!data) return res.status(404).json({ scorebook: null });
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/games/:gameId/live-pitch-counts
+router.get('/games/:gameId/live-pitch-counts', async (req, res) => {
+  try {
+    const counts = await queries.getLivePitchCounts(parseInt(req.params.gameId));
+    res.json(counts);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/games/:gameId/scorebook/init
+router.post('/games/:gameId/scorebook/init', requirePin, async (req, res) => {
+  try {
+    const gameId = parseInt(req.params.gameId);
+    const { homeTeamName, awayTeamName, ourSide } = req.body;
+    await queries.initScorebookState({ gameId, homeTeamName, awayTeamName, ourSide: ourSide || 'home' });
+    const state = await queries.getScorebookState(gameId);
+    res.json(state);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/games/:gameId/scorebook/start
+router.post('/games/:gameId/scorebook/start', requirePin, async (req, res) => {
+  try {
+    const gameId = parseInt(req.params.gameId);
+    await queries.startGame(gameId);
+    const state = await queries.getScorebookState(gameId);
+    res.json(state);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/games/:gameId/scorebook/state
+router.put('/games/:gameId/scorebook/state', requirePin, async (req, res) => {
+  try {
+    const gameId = parseInt(req.params.gameId);
+    const { inning, half, outs, balls, strikes, runner1b, runner2b, runner3b, status } = req.body;
+    await queries.updateScorebookState({ gameId, status, inning, half, outs, balls, strikes, runner1b, runner2b, runner3b });
+    const state = await queries.getScorebookState(gameId);
+    res.json(state);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/games/:gameId/scorebook/lineup
+router.put('/games/:gameId/scorebook/lineup', requirePin, async (req, res) => {
+  try {
+    const gameId = parseInt(req.params.gameId);
+    const { teamSide, entries } = req.body;
+    for (const e of entries) {
+      if (e.playerName) {
+        await queries.upsertLineupEntry({ gameId, teamSide, battingOrder: e.battingOrder, playerName: e.playerName, jerseyNumber: e.jerseyNumber, position: e.position });
+      }
+    }
+    const lineup = await queries.getLineup(gameId, teamSide);
+    res.json(lineup);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/games/:gameId/scorebook/inning/:inning/:half
+router.put('/games/:gameId/scorebook/inning/:inning/:half', requirePin, async (req, res) => {
+  try {
+    const gameId = parseInt(req.params.gameId);
+    const inning = parseInt(req.params.inning);
+    const half = req.params.half;
+    const { runs, hits, errors } = req.body;
+    await queries.upsertInningScore({ gameId, inning, half, runs: runs ?? 0, hits: hits ?? 0, errors: errors ?? 0 });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/games/:gameId/scorebook/plate-appearance
+router.post('/games/:gameId/scorebook/plate-appearance', requirePin, async (req, res) => {
+  try {
+    const gameId = parseInt(req.params.gameId);
+    const { inning, half, battingOrderPos, teamSide, playerName, pitcherName } = req.body;
+    const paId = await queries.insertPlateAppearance({ gameId, inning, half, battingOrderPos, teamSide, playerName, pitcherName });
+    res.json({ paId });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/games/:gameId/scorebook/plate-appearance/:paId
+router.put('/games/:gameId/scorebook/plate-appearance/:paId', requirePin, async (req, res) => {
+  try {
+    const paId = parseInt(req.params.paId);
+    const { outcome, rbi, pitchSequence } = req.body;
+    await queries.updatePlateAppearanceOutcome({ paId, outcome, rbi, pitchSequence });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/games/:gameId/scorebook/pitch
+router.post('/games/:gameId/scorebook/pitch', requirePin, async (req, res) => {
+  try {
+    const gameId = parseInt(req.params.gameId);
+    const { paId, pitcherName, pitcherTeamSide, pitchType, inning, half } = req.body;
+    await queries.logPitch({ gameId, paId, pitcherName, pitcherTeamSide, pitchType, inning, half });
+    const pitchCounts = await queries.getLivePitchCounts(gameId);
+    res.json({ ok: true, pitchCounts });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/games/:gameId/scorebook/pitch/last
+router.delete('/games/:gameId/scorebook/pitch/last', requirePin, async (req, res) => {
+  try {
+    const gameId = parseInt(req.params.gameId);
+    await queries.deleteLastPitch(gameId);
+    const pitchCounts = await queries.getLivePitchCounts(gameId);
+    res.json({ ok: true, pitchCounts });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/games/:gameId/scorebook/substitution
+router.post('/games/:gameId/scorebook/substitution', requirePin, async (req, res) => {
+  try {
+    const gameId = parseInt(req.params.gameId);
+    const { teamSide, battingOrder, newPlayerName, jerseyNumber, position } = req.body;
+    await queries.recordSubstitution({ gameId, teamSide, battingOrder, newPlayerName, jerseyNumber, position });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/games/:gameId/scorebook/end
+router.post('/games/:gameId/scorebook/end', requirePin, async (req, res) => {
+  try {
+    const gameId = parseInt(req.params.gameId);
+    const sbState = await queries.getScorebookState(gameId);
+    const inningScores = await queries.getInningScores(gameId);
+    const ourHalf = sbState?.our_side === 'home' ? 'bottom' : 'top';
+    const themHalf = sbState?.our_side === 'home' ? 'top' : 'bottom';
+    const scoreUs = inningScores.filter(s => s.half === ourHalf).reduce((sum, s) => sum + s.runs, 0);
+    const scoreThem = inningScores.filter(s => s.half === themHalf).reduce((sum, s) => sum + s.runs, 0);
+    await queries.endGame(gameId, scoreUs, scoreThem);
+    const game = await queries.getGame(gameId);
+    res.json(game);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/scrape/:slug - trigger manual scrape for a team by slug
 router.post('/scrape/:slug', async (req, res) => {
   try {

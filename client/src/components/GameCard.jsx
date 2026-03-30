@@ -28,6 +28,13 @@ export default function GameCard({ game, highlight, index = 0 }) {
         {/* Main content */}
         <div className="flex-1 px-4 py-3 min-w-0">
           <div className="flex items-center gap-2">
+            {game.scoring_status === 'live' && (
+              <span className="flex items-center gap-1 font-display text-xs px-1.5 py-0.5 rounded text-white leading-none"
+                style={{ background: 'var(--win)' }}>
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-white animate-ping opacity-80" />
+                LIVE
+              </span>
+            )}
             {hasResult && (
               <span
                 className="font-display text-sm px-1.5 py-0.5 rounded text-white leading-none"

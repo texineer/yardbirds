@@ -140,6 +140,96 @@ function initSchema() {
   try { db.run("ALTER TABLE teams ADD COLUMN ft_seasons TEXT"); } catch(e) {}
   try { db.run("ALTER TABLE teams ADD COLUMN logo_url TEXT"); } catch(e) {}
   db.run('CREATE UNIQUE INDEX IF NOT EXISTS idx_teams_slug ON teams(slug)');
+
+  // Live scorebook tables
+  db.run(`
+    CREATE TABLE IF NOT EXISTS game_scorebook (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      game_id INTEGER NOT NULL UNIQUE,
+      status TEXT NOT NULL DEFAULT 'pending',
+      inning INTEGER NOT NULL DEFAULT 1,
+      half TEXT NOT NULL DEFAULT 'top',
+      outs INTEGER NOT NULL DEFAULT 0,
+      balls INTEGER NOT NULL DEFAULT 0,
+      strikes INTEGER NOT NULL DEFAULT 0,
+      runner_1b TEXT,
+      runner_2b TEXT,
+      runner_3b TEXT,
+      home_team_name TEXT,
+      away_team_name TEXT,
+      our_side TEXT NOT NULL DEFAULT 'home',
+      started_at TEXT,
+      ended_at TEXT,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS lineup_entries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      game_id INTEGER NOT NULL,
+      team_side TEXT NOT NULL,
+      batting_order INTEGER NOT NULL,
+      player_name TEXT NOT NULL,
+      jersey_number TEXT,
+      position TEXT,
+      active INTEGER NOT NULL DEFAULT 1
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS inning_scores (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      game_id INTEGER NOT NULL,
+      inning INTEGER NOT NULL,
+      half TEXT NOT NULL,
+      runs INTEGER NOT NULL DEFAULT 0,
+      hits INTEGER NOT NULL DEFAULT 0,
+      errors INTEGER NOT NULL DEFAULT 0,
+      UNIQUE(game_id, inning, half)
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS plate_appearances (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      game_id INTEGER NOT NULL,
+      inning INTEGER NOT NULL,
+      half TEXT NOT NULL,
+      batting_order_pos INTEGER NOT NULL,
+      team_side TEXT NOT NULL,
+      player_name TEXT NOT NULL,
+      pitcher_name TEXT,
+      outcome TEXT,
+      pitch_sequence TEXT,
+      rbi INTEGER NOT NULL DEFAULT 0,
+      pa_order INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS live_pitches (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      game_id INTEGER NOT NULL,
+      pa_id INTEGER,
+      pitcher_name TEXT NOT NULL,
+      pitcher_team_side TEXT NOT NULL,
+      pitch_type TEXT NOT NULL,
+      inning INTEGER NOT NULL,
+      half TEXT NOT NULL,
+      pitch_seq INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+
+  // Migration: add scoring_status to games
+  try { db.run("ALTER TABLE games ADD COLUMN scoring_status TEXT DEFAULT 'none'"); } catch(e) {}
+
+  db.run('CREATE INDEX IF NOT EXISTS idx_lineup_game ON lineup_entries(game_id, team_side)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_pa_game ON plate_appearances(game_id, pa_order)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_live_pitches_game ON live_pitches(game_id, pitcher_name)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_inning_scores_game ON inning_scores(game_id)');
 }
 
 function saveDb() {
