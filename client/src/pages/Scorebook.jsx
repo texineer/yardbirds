@@ -14,18 +14,18 @@ import LoadingSpinner from '../components/LoadingSpinner'
 const ORDINALS = ['', '1ST', '2ND', '3RD', '4TH', '5TH', '6TH', '7TH', '8TH', '9TH', '10TH', '11TH', '12TH']
 
 const PITCH_CHIP = {
-  B: { bg: 'var(--win-bg, #eaf5ee)', color: 'var(--win)', label: 'B' },
-  C: { bg: 'var(--loss-bg, #fdecea)', color: 'var(--loss)', label: 'C' },
-  S: { bg: 'rgba(184,106,42,0.15)', color: '#B86A2A', label: 'S' },
-  F: { bg: 'rgba(212,168,50,0.15)', color: 'var(--gold-dark, #b8891e)', label: 'F' },
-  X: { bg: 'var(--win-bg, #eaf5ee)', color: 'var(--win)', label: 'X' },
+  B: { bg: '#1B7340', color: '#fff', label: 'B' },
+  C: { bg: '#B8302A', color: '#fff', label: 'C' },
+  S: { bg: '#B86A2A', color: '#fff', label: 'S' },
+  F: { bg: '#D4A832', color: '#2B3E50', label: 'F' },
+  X: { bg: '#1B7340', color: '#fff', label: 'X' },
 }
 
 const HIT_TYPES = [
-  { code: 'GB', label: 'GROUND BALL' },
-  { code: 'LD', label: 'LINE DRIVE' },
-  { code: 'FB', label: 'FLY BALL' },
-  { code: 'PU', label: 'POPUP' },
+  { code: 'GB', label: 'GROUNDER', icon: '↘' },
+  { code: 'LD', label: 'LINER', icon: '→' },
+  { code: 'FB', label: 'FLY', icon: '↗' },
+  { code: 'PU', label: 'POP UP', icon: '↑' },
 ]
 
 const FIELDERS = ['P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF']
@@ -40,21 +40,14 @@ const RESULTS = {
     { code: 'FC', label: "Fielder's Choice" },
   ],
   hits: [
-    { code: '1B', label: 'Single' },
-    { code: '2B', label: 'Double' },
-    { code: '3B', label: 'Triple' },
-    { code: 'HR', label: 'Home Run' },
+    { code: '1B', label: '1B' },
+    { code: '2B', label: '2B' },
+    { code: '3B', label: '3B' },
+    { code: 'HR', label: 'HR' },
   ],
   other: [
     { code: 'E', label: 'Error' },
   ],
-}
-
-const R_STYLES = {
-  GO: '#e74c3c', FO: '#e74c3c', LO: '#e74c3c', DP: '#e74c3c',
-  SAC: '#8aafb6', FC: '#8aafb6', K: '#e74c3c', Kl: '#e74c3c',
-  '1B': '#2b3e50', '2B': '#2b3e50', '3B': '#2b3e50', HR: '#d4a832',
-  E: '#27ae60', BB: '#27ae60', HBP: '#27ae60',
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -83,14 +76,13 @@ function autoAdvance(runners, outcome) {
   return { first, second, third, runs: 0 }
 }
 
-// ── Main Component ────────────────────────────────────────────────────────────
+// ── Scorebook ─────────────────────────────────────────────────────────────────
 
 export default function Scorebook() {
   const { gameId, slug } = useParams()
   const navigate = useNavigate()
   const { user, loading: authLoading } = useAuth()
 
-  // Game data
   const [state, setState] = useState(null)
   const [homeLineup, setHomeLineup] = useState([])
   const [awayLineup, setAwayLineup] = useState([])
@@ -98,20 +90,17 @@ export default function Scorebook() {
   const [error, setError] = useState('')
   const [score, setScore] = useState({ homeScore: 0, awayScore: 0 })
 
-  // Scoring
   const [currentPaId, setCurrentPaId] = useState(null)
   const [pitchLog, setPitchLog] = useState([])
   const [showInPlay, setShowInPlay] = useState(false)
   const [showRunners, setShowRunners] = useState(false)
   const [showEndGame, setShowEndGame] = useState(false)
 
-  // In-play wizard state
   const [ipHitType, setIpHitType] = useState(null)
   const [ipHitLoc, setIpHitLoc] = useState(null)
   const [ipFielder, setIpFielder] = useState(null)
-  const [ipStep, setIpStep] = useState(0) // 0=hitType, 1=fieldTap, 2=fielder, 3=result
+  const [ipStep, setIpStep] = useState(0)
 
-  // Runner confirmation
   const [pendingRunners, setPendingRunners] = useState({ first: null, second: null, third: null })
   const [pendingRuns, setPendingRuns] = useState(0)
   const [pendingOutcome, setPendingOutcome] = useState(null)
@@ -120,12 +109,10 @@ export default function Scorebook() {
   const [toast, setToast] = useState('')
   const toastTimer = useRef(null)
 
-  // ── Auth redirect ──
   useEffect(() => {
     if (!authLoading && !user) navigate(`/${slug}/game/${gameId}/lineup`)
   }, [user, authLoading])
 
-  // ── Load game data ──
   useEffect(() => {
     async function load() {
       try {
@@ -137,14 +124,10 @@ export default function Scorebook() {
         if (data.state?.status === 'in_progress') {
           startNextPA(data.state, data.homeLineup || [], data.awayLineup || [])
         }
-        // Load score
         const s = await getGameScore(gameId).catch(() => ({ homeScore: 0, awayScore: 0 }))
         setScore(s)
-      } catch (e) {
-        setError(e.message)
-      } finally {
-        setLoading(false)
-      }
+      } catch (e) { setError(e.message) }
+      finally { setLoading(false) }
     }
     load()
   }, [gameId])
@@ -165,7 +148,6 @@ export default function Scorebook() {
     setScore(s)
   }
 
-  // ── Lineup / Batter Logic ──
   const batterSide = state?.half === 'top' ? 'away' : 'home'
   const pitcherSide = state?.half === 'top' ? 'home' : 'away'
   const batterLineup = (batterSide === 'home' ? homeLineup : awayLineup).filter(e => e.active !== 0)
@@ -179,11 +161,9 @@ export default function Scorebook() {
     const lineup = (side === 'home' ? hl : al).filter(e => e.active !== 0)
     if (lineup.length === 0) return
     const idx = side === 'home' ? (s?.home_batter_idx ?? 0) : (s?.away_batter_idx ?? 0)
-    const newIdx = (idx + 1) % lineup.length
-    syncState(side === 'home' ? { homeBatterIdx: newIdx } : { awayBatterIdx: newIdx })
+    syncState(side === 'home' ? { homeBatterIdx: (idx + 1) % lineup.length } : { awayBatterIdx: (idx + 1) % lineup.length })
   }
 
-  // ── Start PA ──
   async function startNextPA(s = state, hl = homeLineup, al = awayLineup) {
     if (!s) return
     const side = (s.half === 'top') ? 'away' : 'home'
@@ -193,176 +173,93 @@ export default function Scorebook() {
     const batter = lineup[idx % lineup.length]
     const pLineup = (side === 'home' ? al : hl).filter(e => e.active !== 0)
     const pitcher = pLineup.find(e => e.position === 'P' && e.active) || pLineup[0]
-
     try {
       const result = await startPlateAppearance(parseInt(gameId), {
-        inning: s.inning, half: s.half,
-        battingOrderPos: (idx % lineup.length) + 1,
-        teamSide: side,
-        playerName: batter?.player_name || 'Unknown',
-        pitcherName: pitcher?.player_name || 'Unknown',
+        inning: s.inning, half: s.half, battingOrderPos: (idx % lineup.length) + 1,
+        teamSide: side, playerName: batter?.player_name || 'Unknown', pitcherName: pitcher?.player_name || 'Unknown',
       })
       setCurrentPaId(result.paId)
     } catch (err) { console.error('startPA:', err) }
-
-    setPitchLog([])
-    setShowInPlay(false)
-    setShowRunners(false)
-    resetInPlay()
+    setPitchLog([]); setShowInPlay(false); setShowRunners(false); resetInPlay()
   }
 
-  function resetInPlay() {
-    setIpHitType(null)
-    setIpHitLoc(null)
-    setIpFielder(null)
-    setIpStep(0)
-  }
+  function resetInPlay() { setIpHitType(null); setIpHitLoc(null); setIpFielder(null); setIpStep(0) }
 
-  // ── Pitch ──
   async function handlePitch(type) {
     if (!state) return
     const newLog = [...pitchLog, type]
     setPitchLog(newLog)
-
     let { balls, strikes } = state
     if (type === 'B') balls = Math.min(balls + 1, 4)
     else if (type === 'S' || type === 'C') strikes = Math.min(strikes + 1, 3)
     else if (type === 'F') strikes = Math.min(strikes + 1, 2)
     setState(s => ({ ...s, balls, strikes }))
-
-    logPitch(parseInt(gameId), {
-      paId: currentPaId,
-      pitcherName: currentPitcher?.player_name || 'Unknown',
-      pitcherTeamSide: pitcherSide,
-      pitchType: type, inning: state.inning, half: state.half,
-    }).catch(() => {})
-
-    // Auto-K
-    if (strikes >= 3 && type !== 'F') {
-      await finishPA(type === 'C' ? 'Kl' : 'K', null, null, null, newLog)
-      return
-    }
-    // Auto-BB
-    if (balls >= 4) {
-      await finishPA('BB', null, null, null, newLog)
-      return
-    }
+    logPitch(parseInt(gameId), { paId: currentPaId, pitcherName: currentPitcher?.player_name || 'Unknown', pitcherTeamSide: pitcherSide, pitchType: type, inning: state.inning, half: state.half }).catch(() => {})
+    if (strikes >= 3 && type !== 'F') { await finishPA(type === 'C' ? 'Kl' : 'K', null, null, null, newLog); return }
+    if (balls >= 4) { await finishPA('BB', null, null, null, newLog); return }
   }
 
   function handleInPlay() {
-    logPitch(parseInt(gameId), {
-      paId: currentPaId,
-      pitcherName: currentPitcher?.player_name || 'Unknown',
-      pitcherTeamSide: pitcherSide,
-      pitchType: 'X', inning: state.inning, half: state.half,
-    }).catch(() => {})
-    setPitchLog(prev => [...prev, 'X'])
-    resetInPlay()
-    setShowInPlay(true)
+    logPitch(parseInt(gameId), { paId: currentPaId, pitcherName: currentPitcher?.player_name || 'Unknown', pitcherTeamSide: pitcherSide, pitchType: 'X', inning: state.inning, half: state.half }).catch(() => {})
+    setPitchLog(prev => [...prev, 'X']); resetInPlay(); setShowInPlay(true)
   }
 
   async function handleUndo() {
     if (pitchLog.length === 0) return
-    const newLog = pitchLog.slice(0, -1)
-    setPitchLog(newLog)
+    const newLog = pitchLog.slice(0, -1); setPitchLog(newLog)
     let balls = 0, strikes = 0
-    for (const t of newLog) {
-      if (t === 'B') balls = Math.min(balls + 1, 3)
-      else if (t === 'S' || t === 'C') strikes = Math.min(strikes + 1, 2)
-      else if (t === 'F') strikes = Math.min(strikes + 1, 2)
-    }
+    for (const t of newLog) { if (t === 'B') balls = Math.min(balls + 1, 3); else if (t === 'S' || t === 'C') strikes = Math.min(strikes + 1, 2); else if (t === 'F') strikes = Math.min(strikes + 1, 2) }
     setState(s => ({ ...s, balls, strikes }))
     try { await undoLastPitch(parseInt(gameId)) } catch {}
   }
 
-  // ── In-Play Result ──
   function handleInPlayResult(code) {
     setShowInPlay(false)
     const runners = { first: state.runner_1b, second: state.runner_2b, third: state.runner_3b }
     const adv = autoAdvance(runners, code)
-    setPendingOutcome(code)
-    setPendingRunners(adv)
-    setPendingRuns(adv.runs)
-    setShowRunners(true)
+    setPendingOutcome(code); setPendingRunners(adv); setPendingRuns(adv.runs); setShowRunners(true)
   }
 
-  // ── HBP ──
   function handleHBP() {
     const runners = { first: state.runner_1b, second: state.runner_2b, third: state.runner_3b }
     const adv = autoAdvance(runners, 'HBP')
-    setPendingOutcome('HBP')
-    setPendingRunners(adv)
-    setPendingRuns(adv.runs)
-    setShowRunners(true)
+    setPendingOutcome('HBP'); setPendingRunners(adv); setPendingRuns(adv.runs); setShowRunners(true)
   }
 
-  // ── Confirm Runners → Complete PA ──
   async function confirmRunners() {
     await finishPA(pendingOutcome, ipHitType, ipHitLoc, ipFielder, pitchLog)
-    await syncState({
-      runner_1b: pendingRunners.first, runner_2b: pendingRunners.second, runner_3b: pendingRunners.third,
-    })
+    await syncState({ runner_1b: pendingRunners.first, runner_2b: pendingRunners.second, runner_3b: pendingRunners.third })
     setShowRunners(false)
   }
 
-  // ── Finish a PA ──
   async function finishPA(outcome, hitType, hitLoc, fielder, pLog = pitchLog) {
     if (currentPaId) {
       const runners = { first: state.runner_1b, second: state.runner_2b, third: state.runner_3b }
       const adv = autoAdvance(runners, outcome)
-
-      await recordPlateAppearanceOutcome(parseInt(gameId), currentPaId, {
-        outcome, rbi: adv.runs, pitchSequence: pLog.join(','),
-        hitType, hitX: hitLoc?.x, hitY: hitLoc?.y, fielder, runsScored: adv.runs,
-      }).catch(() => {})
-
-      // For non-in-play (K, BB, HBP), update runners directly
-      if (!showRunners) {
-        await syncState({
-          runner_1b: adv.first, runner_2b: adv.second, runner_3b: adv.third,
-        })
-      }
+      await recordPlateAppearanceOutcome(parseInt(gameId), currentPaId, { outcome, rbi: adv.runs, pitchSequence: pLog.join(','), hitType, hitX: hitLoc?.x, hitY: hitLoc?.y, fielder, runsScored: adv.runs }).catch(() => {})
+      if (!showRunners) await syncState({ runner_1b: adv.first, runner_2b: adv.second, runner_3b: adv.third })
     }
-
-    setPlayLog(prev => [{
-      batter: currentBatter?.player_name || '?',
-      outcome, hitType, fielder,
-    }, ...prev].slice(0, 10))
-
+    setPlayLog(prev => [{ batter: currentBatter?.player_name || '?', outcome, hitType, fielder }, ...prev].slice(0, 10))
     const outCount = isOut(outcome) ? (outcome === 'DP' ? 2 : 1) : 0
     const newOuts = (state?.outs || 0) + outCount
-
     await syncState({ outs: Math.min(newOuts, 3), balls: 0, strikes: 0 })
-
-    if (newOuts >= 3) {
-      await flipInning()
-    } else {
-      advanceBatterIdx()
-      startNextPA()
-    }
+    if (newOuts >= 3) await flipInning()
+    else { advanceBatterIdx(); startNextPA() }
     refreshScore()
   }
 
   async function flipInning() {
-    let newInning = state.inning
-    let newHalf = state.half
-    if (newHalf === 'top') { newHalf = 'bottom' }
-    else { newHalf = 'top'; newInning += 1 }
-
-    await syncState({
-      inning: newInning, half: newHalf, outs: 0, balls: 0, strikes: 0,
-      runner_1b: null, runner_2b: null, runner_3b: null,
-    })
+    let newInning = state.inning, newHalf = state.half
+    if (newHalf === 'top') newHalf = 'bottom'; else { newHalf = 'top'; newInning += 1 }
+    await syncState({ inning: newInning, half: newHalf, outs: 0, balls: 0, strikes: 0, runner_1b: null, runner_2b: null, runner_3b: null })
     showToastMsg(`${newHalf === 'top' ? 'Top' : 'Bottom'} ${ORDINALS[newInning] || newInning}`)
     advanceBatterIdx({ ...state, inning: newInning, half: newHalf })
     startNextPA({ ...state, inning: newInning, half: newHalf, outs: 0, balls: 0, strikes: 0 })
   }
 
   async function handleEndGame() {
-    try {
-      await endScorebookGame(parseInt(gameId), {})
-      navigate(`/${slug}/game/${gameId}`)
-    } catch (e) { showToastMsg(e.message || 'Error') }
+    try { await endScorebookGame(parseInt(gameId), {}); navigate(`/${slug}/game/${gameId}`) }
+    catch (e) { showToastMsg(e.message || 'Error') }
     setShowEndGame(false)
   }
 
@@ -373,191 +270,190 @@ export default function Scorebook() {
   if (!state) return (
     <div className="text-center py-12">
       <div className="font-display text-xl mb-2" style={{ color: 'var(--navy)' }}>NO SCOREBOOK DATA</div>
-      <Link to={`/${slug}/game/${gameId}/lineup`} className="text-sm font-bold no-underline" style={{ color: 'var(--gold-dark)' }}>
-        Go to lineup setup
-      </Link>
+      <Link to={`/${slug}/game/${gameId}/lineup`} className="text-sm font-bold no-underline" style={{ color: 'var(--gold-dark)' }}>Go to lineup setup</Link>
     </div>
   )
 
-  const halfLabel = state.half === 'top' ? '▲' : '▼'
+  const halfArrow = state.half === 'top' ? '▲' : '▼'
   const inningText = ORDINALS[state.inning] || `${state.inning}TH`
-  const homeName = state.home_team_name?.split(' ').pop() || 'HOME'
-  const awayName = state.away_team_name?.split(' ').pop() || 'AWAY'
+  const countDots = (n, max, activeColor) => Array.from({ length: max }, (_, i) => (
+    <span key={i} className="inline-block w-2 h-2 rounded-full" style={{ background: i < n ? activeColor : 'rgba(255,255,255,0.15)' }} />
+  ))
 
   return (
-    <div className="pb-24 -mx-4">
+    <div className="-mx-4" style={{ background: '#1a1a2e', minHeight: '100vh' }}>
       {/* Toast */}
       {toast && (
-        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-lg text-sm font-semibold text-white"
-          style={{ background: 'var(--navy)' }}>
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[60] px-5 py-2.5 rounded-full shadow-2xl text-sm font-bold text-white"
+          style={{ background: 'var(--gold)', color: 'var(--navy)', boxShadow: '0 8px 32px rgba(212,168,50,0.4)' }}>
           {toast}
         </div>
       )}
 
-      {/* ── SCOREBOARD BAR ── */}
-      <div className="px-4 py-2 flex items-center justify-between" style={{ background: 'var(--navy)' }}>
-        <div className="text-center flex-1">
-          <div className="text-[10px] font-bold uppercase tracking-widest text-white opacity-60">{state.away_team_name}</div>
-          <div className="font-display text-2xl text-white">{score.awayScore}</div>
-        </div>
-        <div className="text-center px-4">
-          <div className="font-display text-lg tracking-wider" style={{ color: 'var(--gold)' }}>
-            {halfLabel} {inningText}
+      {/* ━━━ SCOREBOARD ━━━ */}
+      <div style={{ background: 'linear-gradient(180deg, #1e2d3d 0%, #2B3E50 100%)' }}>
+        <div className="flex items-stretch">
+          {/* Away */}
+          <div className="flex-1 py-3 px-3 text-center">
+            <div className="text-[9px] font-bold uppercase tracking-[0.2em] text-white/40 mb-0.5 truncate">{state.away_team_name}</div>
+            <div className="font-display text-4xl text-white leading-none">{score.awayScore}</div>
           </div>
-          <div className="flex justify-center gap-1 mt-0.5">
-            {[0, 1, 2].map(i => (
-              <span key={i} className="w-2.5 h-2.5 rounded-full"
-                style={{ background: i < state.outs ? 'var(--gold)' : 'rgba(255,255,255,0.2)' }} />
-            ))}
+          {/* Center — inning + count */}
+          <div className="flex flex-col items-center justify-center px-3 py-2" style={{ borderLeft: '1px solid rgba(255,255,255,0.08)', borderRight: '1px solid rgba(255,255,255,0.08)' }}>
+            <div className="font-display text-sm tracking-widest" style={{ color: '#D4A832' }}>
+              {halfArrow} {inningText}
+            </div>
+            <div className="flex gap-1.5 mt-1">
+              {countDots(state.outs, 3, '#D4A832')}
+            </div>
+            <div className="flex items-center gap-2 mt-1.5">
+              <div className="flex gap-0.5">{countDots(state.balls, 4, '#1B7340')}</div>
+              <span className="text-white/20 text-[8px]">|</span>
+              <div className="flex gap-0.5">{countDots(state.strikes, 3, '#B8302A')}</div>
+            </div>
+          </div>
+          {/* Home */}
+          <div className="flex-1 py-3 px-3 text-center">
+            <div className="text-[9px] font-bold uppercase tracking-[0.2em] text-white/40 mb-0.5 truncate">{state.home_team_name}</div>
+            <div className="font-display text-4xl text-white leading-none">{score.homeScore}</div>
           </div>
         </div>
-        <div className="text-center flex-1">
-          <div className="text-[10px] font-bold uppercase tracking-widest text-white opacity-60">{state.home_team_name}</div>
-          <div className="font-display text-2xl text-white">{score.homeScore}</div>
-        </div>
+        <div className="stitch-line" style={{ opacity: 0.3 }} />
       </div>
 
-      {/* ── DIAMOND ── */}
-      <div style={{ background: '#2d5a27' }} className="py-2">
+      {/* ━━━ FIELD ━━━ */}
+      <div style={{ background: 'radial-gradient(ellipse at 50% 80%, #2d6a25 0%, #1a4a15 60%, #1a1a2e 100%)' }} className="pt-1 pb-2">
         <GameDiamond
-          runners={showRunners ? pendingRunners : {
-            first: state.runner_1b,
-            second: state.runner_2b,
-            third: state.runner_3b,
-          }}
+          runners={showRunners ? pendingRunners : { first: state.runner_1b, second: state.runner_2b, third: state.runner_3b }}
           batter={currentBatter}
           pitcher={currentPitcher}
           interactive={showRunners}
-          onBaseClick={showRunners ? (base) => {
-            setPendingRunners(prev => ({
-              ...prev,
-              [base]: prev[base] ? null : 'Runner',
-            }))
-          } : undefined}
+          onBaseClick={showRunners ? (base) => setPendingRunners(prev => ({ ...prev, [base]: prev[base] ? null : 'Runner' })) : undefined}
           dragMode={showInPlay && ipStep === 1}
           onBallDrop={(x, y) => { setIpHitLoc({ x, y }); setIpStep(2) }}
           hitMark={ipHitLoc}
-          size={320}
+          size={300}
         />
       </div>
 
-      {/* ── BATTER CARD + COUNT ── */}
-      <div className="px-4 py-3" style={{ background: 'var(--cream)' }}>
-        <div className="flex items-center justify-between mb-1">
-          <div className="font-display text-lg" style={{ color: 'var(--navy)' }}>
-            {currentBatter?.jersey_number ? `#${currentBatter.jersey_number} ` : ''}
+      {/* ━━━ AT BAT STRIP ━━━ */}
+      <div className="px-4 py-2.5 flex items-center gap-3" style={{ background: 'rgba(43,62,80,0.95)', borderTop: '2px solid #D4A832' }}>
+        {/* Batter avatar */}
+        <div className="w-10 h-10 rounded-full flex items-center justify-center font-display text-lg text-white flex-shrink-0"
+          style={{ background: 'linear-gradient(135deg, #D4A832 0%, #B8912A 100%)', boxShadow: '0 2px 8px rgba(212,168,50,0.3)' }}>
+          {currentBatter?.jersey_number || '?'}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="font-display text-lg text-white leading-tight truncate">
             {currentBatter?.player_name || 'AT BAT'}
-            {currentBatter?.position && (
-              <span className="text-xs ml-1.5 font-normal" style={{ color: 'var(--navy-muted)' }}>{currentBatter.position}</span>
-            )}
           </div>
-          <div className="text-xs" style={{ color: 'var(--navy-muted)' }}>
-            P: {currentPitcher?.player_name || '--'}
+          <div className="text-[10px] text-white/40 font-semibold tracking-wide">
+            {currentBatter?.position || ''} {currentPitcher ? `vs ${currentPitcher.player_name?.split(' ').pop()}` : ''}
           </div>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-1">
-            <span className="font-display text-3xl" style={{ color: 'var(--win)' }}>{state.balls}</span>
-            <span className="text-xs font-bold" style={{ color: 'var(--navy-muted)' }}>-</span>
-            <span className="font-display text-3xl" style={{ color: 'var(--loss)' }}>{state.strikes}</span>
+        {/* Pitch chips */}
+        {pitchLog.length > 0 && (
+          <div className="flex gap-0.5 flex-shrink-0">
+            {pitchLog.slice(-8).map((p, i) => (
+              <span key={i} className="w-5 h-5 rounded-full text-[9px] font-bold flex items-center justify-center"
+                style={{ background: PITCH_CHIP[p]?.bg, color: PITCH_CHIP[p]?.color }}>
+                {PITCH_CHIP[p]?.label}
+              </span>
+            ))}
           </div>
-          {pitchLog.length > 0 && (
-            <div className="flex gap-1 overflow-x-auto flex-1">
-              {pitchLog.map((p, i) => (
-                <span key={i} className="h-5 px-1.5 rounded text-[10px] font-bold flex-shrink-0 flex items-center"
-                  style={{ background: PITCH_CHIP[p]?.bg, color: PITCH_CHIP[p]?.color }}>
-                  {PITCH_CHIP[p]?.label || p}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
+        )}
       </div>
 
-      {/* ── PITCH BUTTONS (always visible unless overlay) ── */}
+      {/* ━━━ PITCH CONTROLS ━━━ */}
       {!showInPlay && !showRunners && !showEndGame && (
-        <div className="px-4 py-3 space-y-2" style={{ background: 'white', borderTop: '1px solid var(--border)' }}>
-          <div className="grid grid-cols-4 gap-2">
-            <button className="h-14 rounded-xl font-display text-base active:scale-95 transition-transform"
-              style={{ background: 'var(--navy)', color: 'white' }}
-              onClick={() => handlePitch('B')}>BALL</button>
-            <button className="h-14 rounded-xl font-display text-base active:scale-95 transition-transform"
-              style={{ background: 'var(--loss)', color: 'white' }}
-              onClick={() => handlePitch('C')}>CALLED</button>
-            <button className="h-14 rounded-xl font-display text-base active:scale-95 transition-transform"
-              style={{ background: '#B86A2A', color: 'white' }}
-              onClick={() => handlePitch('S')}>SWING</button>
-            <button className="h-14 rounded-xl font-display text-base active:scale-95 transition-transform"
-              style={{ background: 'var(--gold-dark, #b8891e)', color: 'var(--navy)' }}
-              onClick={() => handlePitch('F')}>FOUL</button>
+        <div className="px-3 py-3 space-y-2" style={{ background: '#1a1a2e' }}>
+          <div className="grid grid-cols-4 gap-1.5">
+            {[
+              { t: 'B', label: 'BALL', bg: '#1B7340', c: '#fff' },
+              { t: 'C', label: 'CALLED', bg: '#B8302A', c: '#fff' },
+              { t: 'S', label: 'SWING', bg: '#B86A2A', c: '#fff' },
+              { t: 'F', label: 'FOUL', bg: '#D4A832', c: '#2B3E50' },
+            ].map(({ t, label, bg, c }) => (
+              <button key={t}
+                className="h-[52px] rounded-2xl font-display text-sm tracking-wider active:scale-93 transition-transform select-none pitch-btn"
+                style={{ background: bg, color: c, boxShadow: `0 4px 12px ${bg}40` }}
+                onClick={() => handlePitch(t)}>
+                {label}
+              </button>
+            ))}
           </div>
-          <div className="grid grid-cols-3 gap-2">
-            <button className="h-12 rounded-xl font-display text-lg tracking-wider col-span-2 active:scale-95 transition-transform"
-              style={{ background: 'var(--win)', color: 'white' }}
+          <div className="grid grid-cols-5 gap-1.5">
+            <button className="col-span-3 h-12 rounded-2xl font-display text-lg tracking-widest active:scale-95 transition-transform select-none pitch-btn"
+              style={{ background: 'linear-gradient(135deg, #1B7340 0%, #27ae60 100%)', color: '#fff', boxShadow: '0 4px 16px rgba(27,115,64,0.3)' }}
               onClick={handleInPlay}>
               IN PLAY
             </button>
-            <button className="h-12 rounded-xl font-display text-base active:scale-95 transition-transform"
-              style={{ background: 'var(--sky)', color: 'var(--navy)' }}
+            <button className="h-12 rounded-2xl font-display text-sm active:scale-95 transition-transform select-none pitch-btn"
+              style={{ background: 'rgba(255,255,255,0.08)', color: 'var(--powder-light)' }}
               onClick={handleHBP}>HBP</button>
+            <button className="h-12 rounded-2xl font-display text-sm active:scale-95 transition-transform select-none pitch-btn"
+              style={{ background: 'rgba(255,255,255,0.08)', color: 'var(--powder-light)' }}
+              onClick={handleUndo}
+              disabled={pitchLog.length === 0}>
+              UNDO
+            </button>
           </div>
-          <div className="flex gap-2">
-            {pitchLog.length > 0 && (
-              <button className="flex-1 h-9 rounded-lg text-xs font-semibold active:scale-95"
-                style={{ color: 'var(--loss)', background: 'var(--loss-bg, #fdecea)' }}
-                onClick={handleUndo}>UNDO</button>
-            )}
-            <button className="h-9 px-4 rounded-lg text-xs font-semibold active:scale-95"
-              style={{ color: 'var(--navy-muted)', background: 'var(--sky)' }}
-              onClick={() => setShowEndGame(true)}>END GAME</button>
+          <div className="flex justify-between items-center pt-1">
+            <Link to={`/${slug}/game/${gameId}/live`} className="text-[10px] font-bold uppercase tracking-widest no-underline px-3 py-1.5 rounded-full"
+              style={{ background: 'rgba(212,168,50,0.15)', color: '#D4A832' }}>
+              LIVE VIEW
+            </Link>
+            <button className="text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-full"
+              style={{ background: 'rgba(184,48,42,0.15)', color: '#B8302A' }}
+              onClick={() => setShowEndGame(true)}>
+              END GAME
+            </button>
           </div>
         </div>
       )}
 
-      {/* ── IN PLAY OVERLAY ── */}
+      {/* ━━━ IN PLAY PANEL ━━━ */}
       {showInPlay && (
-        <div className="px-4 py-3 space-y-3" style={{ background: 'white', borderTop: '2px solid var(--gold)' }}>
+        <div className="px-4 py-4 space-y-3" style={{ background: '#1e2d3d', borderTop: '2px solid #D4A832' }}>
           <div className="flex items-center justify-between">
-            <div className="font-display text-lg" style={{ color: 'var(--navy)' }}>IN PLAY</div>
-            <button className="text-xs font-bold px-2 py-1 rounded"
-              style={{ color: 'var(--loss)', background: 'var(--loss-bg, #fdecea)' }}
+            <div className="font-display text-lg tracking-wider text-white">BALL IN PLAY</div>
+            <button className="text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full"
+              style={{ background: 'rgba(184,48,42,0.2)', color: '#B8302A' }}
               onClick={() => { setShowInPlay(false); resetInPlay() }}>CANCEL</button>
           </div>
 
-          {/* Step 0: Hit Type */}
           {ipStep === 0 && (
             <>
-              <div className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--navy-muted)' }}>HIT TYPE</div>
+              <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/40">HIT TYPE</div>
               <div className="grid grid-cols-4 gap-1.5">
                 {HIT_TYPES.map(ht => (
                   <button key={ht.code}
-                    className="h-12 rounded-xl text-xs font-bold active:scale-95 transition-transform"
-                    style={{ background: ipHitType === ht.code ? 'var(--navy)' : 'var(--sky)', color: ipHitType === ht.code ? 'white' : 'var(--navy)' }}
+                    className="h-14 rounded-xl flex flex-col items-center justify-center gap-0.5 active:scale-95 transition-transform"
+                    style={{ background: 'rgba(255,255,255,0.08)', color: 'white' }}
                     onClick={() => { setIpHitType(ht.code); setIpStep(1) }}>
-                    {ht.label}
+                    <span className="text-lg">{ht.icon}</span>
+                    <span className="text-[10px] font-bold tracking-wider">{ht.label}</span>
                   </button>
                 ))}
               </div>
             </>
           )}
 
-          {/* Step 1: Drag ball on diamond (handled by GameDiamond dragMode above) */}
           {ipStep === 1 && (
-            <div className="text-center py-4">
-              <div className="font-display text-base mb-1" style={{ color: 'var(--navy)' }}>DRAG THE ⚾ ON THE DIAMOND</div>
-              <div className="text-xs" style={{ color: 'var(--navy-muted)' }}>Drag the ball to where it was hit or fielded</div>
+            <div className="text-center py-3">
+              <div className="font-display text-base text-white mb-1">DRAG THE BALL</div>
+              <div className="text-xs text-white/40">Drag the baseball on the field to where it was hit</div>
             </div>
           )}
 
-          {/* Step 2: Fielder */}
           {ipStep === 2 && (
             <>
-              <div className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--navy-muted)' }}>WHO FIELDED IT?</div>
+              <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/40">FIELDED BY</div>
               <div className="grid grid-cols-3 gap-1.5">
                 {FIELDERS.map(pos => (
                   <button key={pos}
-                    className="h-11 rounded-xl font-display text-base active:scale-95 transition-transform"
-                    style={{ background: 'var(--navy)', color: 'white' }}
+                    className="h-12 rounded-xl font-display text-base tracking-wider active:scale-95 transition-transform"
+                    style={{ background: 'rgba(255,255,255,0.1)', color: 'white', border: '1px solid rgba(255,255,255,0.08)' }}
                     onClick={() => { setIpFielder(pos); setIpStep(3) }}>
                     {pos}
                   </button>
@@ -566,33 +462,37 @@ export default function Scorebook() {
             </>
           )}
 
-          {/* Step 3: Result */}
           {ipStep === 3 && (
             <>
-              <div className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--navy-muted)' }}>OUTS</div>
+              <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/40">OUTS</div>
               <div className="grid grid-cols-3 gap-1.5">
                 {RESULTS.outs.map(r => (
                   <button key={r.code}
                     className="h-10 rounded-xl text-xs font-bold active:scale-95 transition-transform"
-                    style={{ background: 'var(--loss-bg, #fdecea)', color: 'var(--loss)' }}
+                    style={{ background: 'rgba(184,48,42,0.2)', color: '#e74c3c', border: '1px solid rgba(184,48,42,0.3)' }}
                     onClick={() => handleInPlayResult(r.code)}>
                     {r.label}
                   </button>
                 ))}
               </div>
-              <div className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--navy-muted)' }}>HITS</div>
+              <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/40">SAFE</div>
               <div className="grid grid-cols-4 gap-1.5">
                 {RESULTS.hits.map(r => (
                   <button key={r.code}
-                    className="h-10 rounded-xl text-xs font-bold active:scale-95 transition-transform"
-                    style={{ background: r.code === 'HR' ? 'var(--gold)' : 'var(--sky)', color: 'var(--navy)' }}
+                    className="h-12 rounded-xl font-display text-xl tracking-wider active:scale-95 transition-transform"
+                    style={{
+                      background: r.code === 'HR' ? 'linear-gradient(135deg, #D4A832, #B8912A)' : 'rgba(255,255,255,0.1)',
+                      color: r.code === 'HR' ? '#1a1a2e' : 'white',
+                      boxShadow: r.code === 'HR' ? '0 4px 16px rgba(212,168,50,0.3)' : 'none',
+                      border: r.code === 'HR' ? 'none' : '1px solid rgba(255,255,255,0.08)',
+                    }}
                     onClick={() => handleInPlayResult(r.code)}>
                     {r.label}
                   </button>
                 ))}
               </div>
               <button className="w-full h-10 rounded-xl text-xs font-bold active:scale-95 transition-transform"
-                style={{ background: 'var(--win-bg, #eaf5ee)', color: 'var(--win)' }}
+                style={{ background: 'rgba(27,115,64,0.2)', color: '#27ae60', border: '1px solid rgba(27,115,64,0.3)' }}
                 onClick={() => handleInPlayResult('E')}>
                 Error
               </button>
@@ -601,75 +501,66 @@ export default function Scorebook() {
         </div>
       )}
 
-      {/* ── RUNNERS OVERLAY ── */}
+      {/* ━━━ RUNNERS PANEL ━━━ */}
       {showRunners && (
-        <div className="px-4 py-3 space-y-3" style={{ background: 'white', borderTop: '2px solid var(--gold)' }}>
-          <div className="font-display text-lg" style={{ color: 'var(--navy)' }}>
-            {pendingOutcome} — CONFIRM RUNNERS
-          </div>
-          <div className="text-sm" style={{ color: 'var(--navy-muted)' }}>
-            Tap bases on diamond above to adjust. {pendingRuns > 0 ? `${pendingRuns} run(s) scored.` : 'No runs.'}
+        <div className="px-4 py-4 space-y-3" style={{ background: '#1e2d3d', borderTop: '2px solid #D4A832' }}>
+          <div className="flex items-center gap-3">
+            <span className="font-display text-xl tracking-wider text-white">{pendingOutcome}</span>
+            <span className="text-xs text-white/40">Tap bases to adjust runners</span>
           </div>
           <div className="flex items-center gap-3">
-            <button className="h-9 px-3 rounded-lg text-xs font-bold active:scale-95"
-              style={{ background: 'var(--sky)', color: 'var(--navy)' }}
-              onClick={() => setPendingRuns(r => Math.max(0, r - 1))}>- RUN</button>
-            <span className="font-display text-xl" style={{ color: 'var(--navy)' }}>{pendingRuns} R</span>
-            <button className="h-9 px-3 rounded-lg text-xs font-bold active:scale-95"
-              style={{ background: 'var(--sky)', color: 'var(--navy)' }}
-              onClick={() => setPendingRuns(r => r + 1)}>+ RUN</button>
+            <button className="h-9 px-4 rounded-full text-xs font-bold active:scale-95"
+              style={{ background: 'rgba(255,255,255,0.08)', color: 'white' }}
+              onClick={() => setPendingRuns(r => Math.max(0, r - 1))}>-</button>
+            <div className="font-display text-3xl text-white">
+              {pendingRuns}
+              <span className="text-sm text-white/40 ml-1">RUNS</span>
+            </div>
+            <button className="h-9 px-4 rounded-full text-xs font-bold active:scale-95"
+              style={{ background: 'rgba(255,255,255,0.08)', color: 'white' }}
+              onClick={() => setPendingRuns(r => r + 1)}>+</button>
           </div>
-          <button
-            className="w-full h-14 rounded-xl font-display text-xl tracking-widest text-white active:scale-95 transition-transform"
-            style={{ background: 'var(--navy)' }}
+          <button className="w-full h-14 rounded-2xl font-display text-xl tracking-widest text-white active:scale-95 transition-transform"
+            style={{ background: 'linear-gradient(135deg, #D4A832, #B8912A)', color: '#1a1a2e', boxShadow: '0 4px 20px rgba(212,168,50,0.3)' }}
             onClick={confirmRunners}>
             CONFIRM
           </button>
         </div>
       )}
 
-      {/* ── END GAME ── */}
+      {/* ━━━ END GAME ━━━ */}
       {showEndGame && (
-        <div className="px-4 py-3 space-y-3" style={{ background: 'white', borderTop: '2px solid var(--loss)' }}>
-          <div className="font-display text-xl" style={{ color: 'var(--loss)' }}>END GAME?</div>
-          <div className="text-sm" style={{ color: 'var(--navy-muted)' }}>Final score will be saved from play data.</div>
-          <button className="w-full h-14 rounded-xl font-display text-xl tracking-widest text-white active:scale-95"
-            style={{ background: 'var(--loss)' }}
-            onClick={handleEndGame}>CONFIRM END GAME</button>
-          <button className="w-full h-10 rounded-xl text-sm font-semibold"
-            style={{ background: 'var(--sky)', color: 'var(--navy)' }}
+        <div className="px-4 py-4 space-y-3" style={{ background: '#1e2d3d', borderTop: '2px solid #B8302A' }}>
+          <div className="font-display text-xl tracking-wider" style={{ color: '#e74c3c' }}>END GAME?</div>
+          <div className="text-xs text-white/50">Final score will be calculated from play data.</div>
+          <button className="w-full h-14 rounded-2xl font-display text-xl tracking-widest text-white active:scale-95"
+            style={{ background: '#B8302A', boxShadow: '0 4px 16px rgba(184,48,42,0.3)' }}
+            onClick={handleEndGame}>FINAL</button>
+          <button className="w-full h-10 rounded-xl text-sm font-semibold text-white/50"
             onClick={() => setShowEndGame(false)}>Cancel</button>
         </div>
       )}
 
-      {/* ── PLAY LOG ── */}
+      {/* ━━━ PLAY LOG ━━━ */}
       {playLog.length > 0 && (
         <div className="px-4 py-3">
-          <div className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--navy-muted)' }}>PLAYS</div>
-          <div className="space-y-1">
-            {playLog.slice(0, 5).map((p, i) => (
-              <div key={i} className="flex items-center gap-2 text-sm py-1 px-2 rounded"
-                style={{ background: i === 0 ? 'rgba(212,168,50,0.08)' : 'transparent' }}>
-                <span className="font-semibold truncate flex-1" style={{ color: 'var(--navy)' }}>{p.batter}</span>
-                <span className="font-display text-xs px-1.5 py-0.5 rounded"
-                  style={{ background: R_STYLES[p.outcome] ? `${R_STYLES[p.outcome]}20` : 'var(--sky)', color: R_STYLES[p.outcome] || 'var(--navy)' }}>
-                  {p.outcome}
-                </span>
-                {p.fielder && <span className="text-[10px] font-bold" style={{ color: 'var(--navy-muted)' }}>{p.fielder}</span>}
-              </div>
-            ))}
-          </div>
+          <div className="text-[9px] font-bold uppercase tracking-[0.2em] text-white/30 mb-2">RECENT PLAYS</div>
+          {playLog.slice(0, 4).map((p, i) => (
+            <div key={i} className="flex items-center gap-2 py-1.5"
+              style={{ borderBottom: i < 3 ? '1px solid rgba(255,255,255,0.04)' : 'none', opacity: 1 - i * 0.15 }}>
+              <span className="text-xs font-semibold text-white/70 truncate flex-1">{p.batter}</span>
+              <span className="font-display text-xs px-2 py-0.5 rounded-full"
+                style={{
+                  background: isOut(p.outcome) ? 'rgba(184,48,42,0.2)' : ['1B','2B','3B','HR'].includes(p.outcome) ? 'rgba(212,168,50,0.2)' : 'rgba(27,115,64,0.2)',
+                  color: isOut(p.outcome) ? '#e74c3c' : ['1B','2B','3B','HR'].includes(p.outcome) ? '#D4A832' : '#27ae60',
+                }}>
+                {p.outcome}
+              </span>
+              {p.fielder && <span className="text-[10px] font-bold text-white/30">{p.fielder}</span>}
+            </div>
+          ))}
         </div>
       )}
-
-      {/* LIVE link */}
-      <div className="px-4 py-2 text-center">
-        <Link to={`/${slug}/game/${gameId}/live`}
-          className="text-xs font-bold no-underline px-3 py-1.5 rounded"
-          style={{ background: 'var(--sky)', color: 'var(--navy)' }}>
-          SHARE LIVE VIEW
-        </Link>
-      </div>
     </div>
   )
 }
