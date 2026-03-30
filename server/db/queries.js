@@ -38,6 +38,30 @@ async function getTeam(orgId, teamId) {
   return get(db, 'SELECT * FROM teams WHERE pg_org_id = ? AND pg_team_id = ?', [orgId, teamId]);
 }
 
+async function getTeamBySlug(slug) {
+  const db = await getDb();
+  return get(db, 'SELECT * FROM teams WHERE slug = ?', [slug]);
+}
+
+async function getAllTeams() {
+  const db = await getDb();
+  return all(db, 'SELECT * FROM teams WHERE slug IS NOT NULL ORDER BY name');
+}
+
+async function registerTeam({ slug, pgOrgId, pgTeamId, name, ageGroup, ftTeamUuid, ftSeasons, logoUrl }) {
+  const db = await getDb();
+  // Upsert: if team exists by PG IDs, update slug/ft fields; otherwise insert
+  const existing = get(db, 'SELECT * FROM teams WHERE pg_org_id = ? AND pg_team_id = ?', [pgOrgId, pgTeamId]);
+  if (existing) {
+    run(db, `UPDATE teams SET slug=?, ft_team_uuid=?, ft_seasons=?, logo_url=? WHERE pg_org_id=? AND pg_team_id=?`,
+      [slug, ftTeamUuid || null, ftSeasons || null, logoUrl || null, pgOrgId, pgTeamId]);
+  } else {
+    run(db, `INSERT INTO teams (pg_org_id, pg_team_id, name, age_group, slug, ft_team_uuid, ft_seasons, logo_url)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [pgOrgId, pgTeamId, name, ageGroup, slug, ftTeamUuid || null, ftSeasons || null, logoUrl || null]);
+  }
+}
+
 async function searchTeams(query) {
   const db = await getDb();
   return all(db, 'SELECT * FROM teams WHERE name LIKE ? ORDER BY name LIMIT 50', [`%${query}%`]);
@@ -281,7 +305,7 @@ async function getOpponentPitcherTotals(eventId, opponentName) {
 }
 
 module.exports = {
-  upsertTeam, getTeam, searchTeams,
+  upsertTeam, getTeam, getTeamBySlug, getAllTeams, registerTeam, searchTeams,
   upsertPlayer, getPlayers,
   upsertTournament, linkTeamTournament, getTeamTournaments, getTournament,
   upsertGame, getTeamGames, getGame, getGameByPgId, getTournamentGames,

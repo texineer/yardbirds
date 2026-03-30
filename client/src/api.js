@@ -6,8 +6,12 @@ async function fetchJson(url) {
   return res.json();
 }
 
-export function getConfig() {
-  return fetchJson('/config');
+export function getTeams() {
+  return fetchJson('/teams');
+}
+
+export function getTeamBySlug(slug) {
+  return fetchJson(`/teams/by-slug/${slug}`);
 }
 
 export function getTeam(orgId, teamId) {
@@ -54,8 +58,8 @@ export function getPitchRules(ageGroup) {
   return fetchJson(`/pitch-rules/${ageGroup}`);
 }
 
-export function triggerScrape(orgId, teamId) {
-  return fetch(`${API_BASE}/scrape/${orgId}/${teamId}`, { method: 'POST' }).then(r => r.json());
+export function triggerScrape(slug) {
+  return fetch(`${API_BASE}/scrape/${slug}`, { method: 'POST' }).then(r => r.json());
 }
 
 // Pitch count severity helper

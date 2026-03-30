@@ -4,16 +4,34 @@ const { scrapeFiveToolTeam } = require('./fivetool');
 const queries = require('../db/queries');
 const { closeDb, saveDb } = require('../db/schema');
 
-// Team config — override via environment variables
-const DEFAULT_ORG_ID = parseInt(process.env.PG_ORG_ID) || 50903;
-const DEFAULT_TEAM_ID = parseInt(process.env.PG_TEAM_ID) || 276649;
 const DEFAULT_YEAR = parseInt(process.env.YEAR) || 2026;
 
-// Five Tool config
-const FT_TEAM_UUID = process.env.FT_TEAM_UUID || 'cc705482-b247-41d9-8591-dc97f17a1ca2';
-const FT_SEASONS = (process.env.FT_SEASONS || '2026-baseball').split(',');
+// Scrape a specific team by slug (looks up config from DB)
+async function scrapeBySlug(slug, year = DEFAULT_YEAR) {
+  const team = await queries.getTeamBySlug(slug);
+  if (!team) throw new Error(`Team not found: ${slug}`);
+  const ftUuid = team.ft_team_uuid || null;
+  const ftSeasons = team.ft_seasons ? team.ft_seasons.split(',') : [];
+  return scrapeAll(team.pg_org_id, team.pg_team_id, year, ftUuid, ftSeasons);
+}
 
-async function scrapeAll(orgId = DEFAULT_ORG_ID, teamId = DEFAULT_TEAM_ID, year = DEFAULT_YEAR) {
+// Scrape all registered teams
+async function scrapeAllTeams(year = DEFAULT_YEAR) {
+  const teams = await queries.getAllTeams();
+  console.log(`\n=== Scraping ${teams.length} registered teams ===\n`);
+  for (const team of teams) {
+    const ftUuid = team.ft_team_uuid || null;
+    const ftSeasons = team.ft_seasons ? team.ft_seasons.split(',') : [];
+    try {
+      await scrapeAll(team.pg_org_id, team.pg_team_id, year, ftUuid, ftSeasons);
+    } catch (err) {
+      console.error(`[scraper] Failed to scrape ${team.slug}: ${err.message}`);
+    }
+  }
+  saveDb();
+}
+
+async function scrapeAll(orgId, teamId, year = DEFAULT_YEAR, ftTeamUuid = null, ftSeasons = []) {
   console.log(`\n=== Scraping team ${orgId}/${teamId} for ${year} ===\n`);
 
   try {
@@ -106,11 +124,11 @@ async function scrapeAll(orgId = DEFAULT_ORG_ID, teamId = DEFAULT_TEAM_ID, year 
     }
 
     // Step 3: Scrape Five Tool Youth
-    if (FT_TEAM_UUID) {
+    if (ftTeamUuid) {
       console.log('\n--- Five Tool Youth ---');
-      for (const ftSeason of FT_SEASONS) {
+      for (const ftSeason of ftSeasons) {
         try {
-          await scrapeFiveToolTeam(FT_TEAM_UUID, ftSeason, orgId, teamId);
+          await scrapeFiveToolTeam(ftTeamUuid, ftSeason, orgId, teamId);
           await sleep(1500);
         } catch (err) {
           console.error(`[ft-scraper] Error scraping ${ftSeason}: ${err.message}`);
@@ -136,14 +154,24 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// Run if called directly
+// Run if called directly: node run.js [slug] or node run.js [orgId] [teamId]
 if (require.main === module) {
   const args = process.argv.slice(2);
-  const orgId = args[0] ? parseInt(args[0]) : DEFAULT_ORG_ID;
-  const teamId = args[1] ? parseInt(args[1]) : DEFAULT_TEAM_ID;
-  const year = args[2] ? parseInt(args[2]) : DEFAULT_YEAR;
-
-  scrapeAll(orgId, teamId, year)
+  const run = async () => {
+    const { getDb } = require('../db/schema');
+    await getDb();
+    if (args[0] && isNaN(args[0])) {
+      // Argument is a slug
+      await scrapeBySlug(args[0]);
+    } else if (args.length === 0) {
+      // No args — scrape all registered teams
+      await scrapeAllTeams();
+    } else {
+      // Legacy: orgId teamId [year]
+      await scrapeAll(parseInt(args[0]), parseInt(args[1]), parseInt(args[2]) || DEFAULT_YEAR);
+    }
+  };
+  run()
     .then(() => {
       closeDb();
       process.exit(0);
@@ -155,4 +183,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { scrapeAll };
+module.exports = { scrapeAll, scrapeBySlug, scrapeAllTeams };

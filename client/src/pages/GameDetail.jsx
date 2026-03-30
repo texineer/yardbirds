@@ -47,7 +47,7 @@ export default function GameDetail() {
   return (
     <div className="space-y-6">
       {/* Back */}
-      <Link to="/schedule" className="inline-flex items-center gap-1 text-xs font-semibold no-underline" style={{ color: 'var(--navy-muted)' }}>
+      <Link to="../schedule" className="inline-flex items-center gap-1 text-xs font-semibold no-underline" style={{ color: 'var(--navy-muted)' }}>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
         Schedule
       </Link>

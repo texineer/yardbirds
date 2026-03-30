@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Routes, Route, Link, useLocation, useParams } from 'react-router-dom'
-import { getConfig } from './api'
+import { getTeamBySlug } from './api'
 import Dashboard from './pages/Dashboard'
 import Schedule from './pages/Schedule'
 import GameDetail from './pages/GameDetail'
@@ -8,33 +8,71 @@ import PitchingReport from './pages/PitchingReport'
 import TeamSearch from './pages/TeamSearch'
 import TournamentSchedule from './pages/TournamentSchedule'
 import TournamentBracket from './pages/TournamentBracket'
+import Landing from './pages/Landing'
 import LoadingSpinner from './components/LoadingSpinner'
 
 function App() {
   const location = useLocation()
-  const [config, setConfig] = useState(null)
-
-  useEffect(() => {
-    getConfig().then(setConfig).catch(() => setConfig({ orgId: 50903, teamId: 276649, teamName: 'Yardbirds' }))
-  }, [])
-
-  const navItems = [
-    { path: '/', label: 'Home', icon: HomeIcon },
-    { path: '/schedule', label: 'Schedule', icon: CalendarIcon },
-    { path: '/search', label: 'Teams', icon: SearchIcon },
-  ]
 
   return (
     <div className="flex flex-col min-h-dvh">
+      <Routes>
+        {/* Landing page — no header/nav */}
+        <Route path="/" element={<Landing />} />
+        {/* Team pages — with header/nav */}
+        <Route path="/:slug/*" element={<TeamLayout />} />
+      </Routes>
+    </div>
+  )
+}
+
+function TeamLayout() {
+  const { slug } = useParams()
+  const location = useLocation()
+  const [team, setTeam] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    setLoading(true)
+    getTeamBySlug(slug)
+      .then(setTeam)
+      .catch(() => setTeam(null))
+      .finally(() => setLoading(false))
+  }, [slug])
+
+  if (loading) return <div className="flex-1"><LoadingSpinner /></div>
+  if (!team) return (
+    <div className="flex-1 flex items-center justify-center">
+      <div className="text-center py-16">
+        <div className="font-display text-3xl" style={{ color: 'var(--navy)' }}>TEAM NOT FOUND</div>
+        <p className="text-sm mt-2" style={{ color: 'var(--navy-muted)' }}>"{slug}" doesn't exist yet.</p>
+        <Link to="/" className="inline-block mt-4 text-sm font-bold no-underline" style={{ color: 'var(--gold-dark)' }}>
+          Back to all teams
+        </Link>
+      </div>
+    </div>
+  )
+
+  const navItems = [
+    { path: `/${slug}`, label: 'Home', icon: HomeIcon },
+    { path: `/${slug}/schedule`, label: 'Schedule', icon: CalendarIcon },
+    { path: `/${slug}/search`, label: 'Teams', icon: SearchIcon },
+  ]
+
+  return (
+    <>
       {/* Header */}
       <header className="relative overflow-hidden" style={{ background: 'var(--navy)' }}>
         <div className="relative px-4 py-2.5 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-2.5 no-underline">
-            <img src={config?.teamLogo || '/yardbirds-logo.png'} alt="" className="w-9 h-9 object-contain" />
+          <Link to={`/${slug}`} className="flex items-center gap-2.5 no-underline">
+            <img src={team.logo_url || '/yardbirds-logo.png'} alt="" className="w-9 h-9 object-contain" />
             <div>
-              <span className="font-display text-xl text-white tracking-wide leading-none">{(config?.teamName || 'YARDBIRDS').toUpperCase()}</span>
-              <span className="block text-[10px] font-semibold tracking-[0.2em] uppercase" style={{ color: 'var(--gold)' }}>PG + Five Tool</span>
+              <span className="font-display text-xl text-white tracking-wide leading-none">{(team.name || slug).toUpperCase()}</span>
+              <span className="block text-[10px] font-semibold tracking-[0.2em] uppercase" style={{ color: 'var(--gold)' }}>BleacherBox</span>
             </div>
+          </Link>
+          <Link to="/" className="text-[10px] font-bold uppercase tracking-wider no-underline px-2 py-1 rounded" style={{ color: 'var(--gold)', background: 'rgba(255,255,255,0.1)' }}>
+            All Teams
           </Link>
         </div>
         <div className="stitch-line" />
@@ -42,19 +80,15 @@ function App() {
 
       {/* Main Content */}
       <main className="flex-1 px-4 py-5 max-w-2xl mx-auto w-full">
-        {!config ? <LoadingSpinner /> : (
         <Routes>
-          <Route path="/" element={<Dashboard orgId={config.orgId} teamId={config.teamId} />} />
-          <Route path="/schedule" element={<Schedule orgId={config.orgId} teamId={config.teamId} />} />
+          <Route path="/" element={<Dashboard orgId={team.pg_org_id} teamId={team.pg_team_id} slug={slug} />} />
+          <Route path="/schedule" element={<Schedule orgId={team.pg_org_id} teamId={team.pg_team_id} />} />
           <Route path="/game/:gameId" element={<GameDetail />} />
           <Route path="/tournament/:eventId/pitching" element={<PitchingReport />} />
           <Route path="/tournament/:eventId/schedule" element={<TournamentSchedule />} />
           <Route path="/tournament/:eventId/bracket" element={<TournamentBracket />} />
           <Route path="/search" element={<TeamSearch />} />
-          <Route path="/team/:orgId/:teamId" element={<DynamicDashboard />} />
-          <Route path="/team/:orgId/:teamId/schedule" element={<DynamicSchedule />} />
         </Routes>
-        )}
       </main>
 
       {/* Bottom Navigation */}
@@ -78,7 +112,7 @@ function App() {
           })}
         </div>
       </nav>
-    </div>
+    </>
   )
 }
 
@@ -108,17 +142,6 @@ function SearchIcon({ active }) {
       <circle cx="11" cy="11" r="7" /><path d="M21 21l-4.35-4.35" />
     </svg>
   )
-}
-
-// Dynamic route wrappers
-function DynamicDashboard() {
-  const { orgId, teamId } = useParams()
-  return <Dashboard orgId={parseInt(orgId)} teamId={parseInt(teamId)} />
-}
-
-function DynamicSchedule() {
-  const { orgId, teamId } = useParams()
-  return <Schedule orgId={parseInt(orgId)} teamId={parseInt(teamId)} />
 }
 
 export default App

@@ -10,11 +10,11 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       manifest: {
-        name: 'Yardbirds Baseball',
-        short_name: 'Yardbirds',
-        description: 'Perfect Game schedule & pitch counts for parents',
-        theme_color: '#1e3a5f',
-        background_color: '#f8fafc',
+        name: 'BleacherBox',
+        short_name: 'BleacherBox',
+        description: 'Baseball schedules, pitch counts & scouting for parents',
+        theme_color: '#2B3E50',
+        background_color: '#F2F7FA',
         display: 'standalone',
         icons: [
           { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },

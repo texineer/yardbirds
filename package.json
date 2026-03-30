@@ -1,8 +1,8 @@
 {
-  "name": "yardbirds",
-  "version": "1.0.0",
+  "name": "bleacherbox",
+  "version": "2.0.0",
   "private": true,
-  "description": "Perfect Game baseball parent app - schedules and pitch counts",
+  "description": "BleacherBox - Baseball schedules, pitch counts & scouting for parents",
   "scripts": {
     "server": "node server/index.js",
     "client": "cd client && npm run dev",

@@ -34,7 +34,7 @@ export default function Schedule({ orgId, teamId }) {
 
   return (
     <div className="space-y-8">
-      <Link to="/" className="inline-flex items-center gap-1 text-xs font-semibold no-underline" style={{ color: 'var(--navy-muted)' }}>
+      <Link to=".." className="inline-flex items-center gap-1 text-xs font-semibold no-underline" style={{ color: 'var(--navy-muted)' }}>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
         Home
       </Link>
@@ -88,7 +88,7 @@ export default function Schedule({ orgId, teamId }) {
                   <div className="shrink-0 flex flex-col gap-1">
                     {t.source !== 'ft' && (
                       <Link
-                        to={`/tournament/${t.pg_event_id}/pitching`}
+                        to={`tournament/${t.pg_event_id}/pitching`}
                         className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1.5 rounded no-underline whitespace-nowrap"
                         style={{ background: 'var(--gold)', color: 'var(--navy)' }}
                       >
@@ -98,7 +98,7 @@ export default function Schedule({ orgId, teamId }) {
                     )}
                     {t.source !== 'ft' && (
                       <Link
-                        to={`/tournament/${t.pg_event_id}/schedule`}
+                        to={`tournament/${t.pg_event_id}/schedule`}
                         className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1.5 rounded no-underline whitespace-nowrap"
                         style={{ background: 'rgba(255,255,255,0.15)', color: 'white' }}
                       >
@@ -108,7 +108,7 @@ export default function Schedule({ orgId, teamId }) {
                     )}
                     {t.source !== 'ft' && (
                       <Link
-                        to={`/tournament/${t.pg_event_id}/bracket`}
+                        to={`tournament/${t.pg_event_id}/bracket`}
                         className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1.5 rounded no-underline whitespace-nowrap"
                         style={{ background: 'rgba(255,255,255,0.15)', color: 'white' }}
                     >

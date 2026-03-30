@@ -2,7 +2,7 @@ const initSqlJs = require('sql.js');
 const fs = require('fs');
 const path = require('path');
 
-const DB_PATH = path.join(__dirname, '..', '..', 'data', 'yardbirds.db');
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', '..', 'data', 'bleacherbox.db');
 
 let db = null;
 let initPromise = null;
@@ -133,6 +133,13 @@ function initSchema() {
   try { db.run("ALTER TABLE games ADD COLUMN source TEXT DEFAULT 'pg'"); } catch(e) {}
   try { db.run("ALTER TABLE games ADD COLUMN source_game_key TEXT"); } catch(e) {}
   db.run('CREATE UNIQUE INDEX IF NOT EXISTS idx_games_source_key ON games(source_game_key)');
+
+  // Migration: add multi-tenant fields to teams
+  try { db.run("ALTER TABLE teams ADD COLUMN slug TEXT"); } catch(e) {}
+  try { db.run("ALTER TABLE teams ADD COLUMN ft_team_uuid TEXT"); } catch(e) {}
+  try { db.run("ALTER TABLE teams ADD COLUMN ft_seasons TEXT"); } catch(e) {}
+  try { db.run("ALTER TABLE teams ADD COLUMN logo_url TEXT"); } catch(e) {}
+  db.run('CREATE UNIQUE INDEX IF NOT EXISTS idx_teams_slug ON teams(slug)');
 }
 
 function saveDb() {

@@ -1,20 +1,18 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { getTeam, getSchedule, triggerScrape, getConfig } from '../api'
+import { getTeam, getSchedule, triggerScrape } from '../api'
 import GameCard from '../components/GameCard'
 import LoadingSpinner from '../components/LoadingSpinner'
 
-export default function Dashboard({ orgId, teamId }) {
+export default function Dashboard({ orgId, teamId, slug }) {
   const [team, setTeam] = useState(null)
   const [schedule, setSchedule] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [scraping, setScraping] = useState(false)
-  const [config, setConfig] = useState(null)
 
   useEffect(() => {
     loadData()
-    getConfig().then(setConfig).catch(() => {})
   }, [orgId, teamId])
 
   async function loadData() {
@@ -37,7 +35,7 @@ export default function Dashboard({ orgId, teamId }) {
   async function handleScrape() {
     setScraping(true)
     try {
-      await triggerScrape(orgId, teamId)
+      await triggerScrape(slug)
       // Scrape runs in background on server — poll until data refreshes
       const poll = async (attempts = 0) => {
         if (attempts >= 6) { setScraping(false); return }
@@ -57,7 +55,7 @@ export default function Dashboard({ orgId, teamId }) {
   if (error) {
     return (
       <div className="text-center py-16">
-        <img src={config?.teamLogo || '/yardbirds-logo.png'} alt="" className="w-20 h-20 object-contain mx-auto mb-4 opacity-40" />
+        <img src={team?.logo_url || '/yardbirds-logo.png'} alt="" className="w-20 h-20 object-contain mx-auto mb-4 opacity-40" />
         <div className="font-display text-2xl mb-2" style={{ color: 'var(--navy-muted)' }}>NO DATA YET</div>
         <p className="text-sm mb-6" style={{ color: 'var(--navy-muted)' }}>{error}</p>
         <button
@@ -90,7 +88,7 @@ export default function Dashboard({ orgId, teamId }) {
         <div className="h-1.5" style={{ background: 'linear-gradient(90deg, var(--powder), var(--gold), var(--powder))' }} />
         <div className="p-5">
           <div className="flex items-start gap-4">
-            <img src={config?.teamLogo || '/yardbirds-logo.png'} alt="Yardbirds" className="w-16 h-16 object-contain shrink-0" />
+            <img src={team?.logo_url || '/yardbirds-logo.png'} alt="Yardbirds" className="w-16 h-16 object-contain shrink-0" />
             <div className="flex-1 min-w-0">
               <div className="section-label mb-0.5">Team</div>
               <h1 className="font-display text-3xl leading-none" style={{ color: 'var(--navy)' }}>
@@ -142,7 +140,7 @@ export default function Dashboard({ orgId, teamId }) {
                 <div className="section-label mt-1">Season Record</div>
               </div>
               <Link
-                to="/schedule"
+                to="schedule"
                 className="btn-gold text-xs no-underline px-3 py-1.5 rounded-lg mb-1"
               >
                 Full Schedule

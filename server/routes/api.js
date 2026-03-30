@@ -4,17 +4,39 @@ const queries = require('../db/queries');
 const { scrapeAll } = require('../scrapers/run');
 const { scrapeTournamentSchedule } = require('../scrapers/tournament');
 
-// Team config — served to the frontend
-const TEAM_CONFIG = {
-  orgId: parseInt(process.env.PG_ORG_ID) || 50903,
-  teamId: parseInt(process.env.PG_TEAM_ID) || 276649,
-  teamName: process.env.TEAM_NAME || 'Yardbirds',
-  teamLogo: process.env.TEAM_LOGO || '/yardbirds-logo.png',
-};
+// GET /api/teams - list all registered teams
+router.get('/teams', async (req, res) => {
+  try {
+    const teams = await queries.getAllTeams();
+    res.json(teams);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-// GET /api/config
-router.get('/config', (req, res) => {
-  res.json(TEAM_CONFIG);
+// GET /api/teams/by-slug/:slug - get team by URL slug
+router.get('/teams/by-slug/:slug', async (req, res) => {
+  try {
+    const team = await queries.getTeamBySlug(req.params.slug);
+    if (!team) return res.status(404).json({ error: 'Team not found' });
+    const combinedRecord = await queries.getCombinedRecord(team.pg_org_id, team.pg_team_id);
+    const players = await queries.getPlayers(team.pg_org_id, team.pg_team_id);
+    res.json({ ...team, players, combinedRecord });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/teams - register a new team
+router.post('/teams', async (req, res) => {
+  try {
+    const { slug, pgOrgId, pgTeamId, name, ageGroup, ftTeamUuid, ftSeasons, logoUrl } = req.body;
+    if (!slug || !pgOrgId || !pgTeamId) return res.status(400).json({ error: 'slug, pgOrgId, pgTeamId required' });
+    await queries.registerTeam({ slug, pgOrgId, pgTeamId, name: name || '', ageGroup: ageGroup || '', ftTeamUuid, ftSeasons, logoUrl });
+    res.json({ status: 'ok', slug });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Pitch count rules by age group
@@ -211,18 +233,26 @@ router.get('/tournaments/:eventId/pitching-report', async (req, res) => {
   }
 });
 
-// POST /api/scrape/:orgId/:teamId - trigger manual scrape
-router.post('/scrape/:orgId/:teamId', async (req, res) => {
+// POST /api/scrape/:slug - trigger manual scrape for a team by slug
+router.post('/scrape/:slug', async (req, res) => {
   try {
-    const orgId = parseInt(req.params.orgId);
-    const teamId = parseInt(req.params.teamId);
-    const year = parseInt(req.query.year) || new Date().getFullYear();
-
+    const { scrapeBySlug } = require('../scrapers/run');
     res.json({ status: 'started', message: 'Scrape started in background' });
-
-    // Run scrape in background (don't await)
-    scrapeAll(orgId, teamId, year).catch(err => {
+    scrapeBySlug(req.params.slug).catch(err => {
       console.error(`[api] Background scrape failed: ${err.message}`);
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/scrape - scrape all registered teams
+router.post('/scrape', async (req, res) => {
+  try {
+    const { scrapeAllTeams } = require('../scrapers/run');
+    res.json({ status: 'started', message: 'Scraping all teams in background' });
+    scrapeAllTeams().catch(err => {
+      console.error(`[api] Background scrape-all failed: ${err.message}`);
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
