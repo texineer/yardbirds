@@ -171,10 +171,18 @@ export default function Dashboard({ orgId, teamId, slug }) {
                         {formatDate(t.start_date)}{t.end_date && t.end_date !== t.start_date ? ` — ${formatDate(t.end_date)}` : ''}
                       </span>
                     )}
-                    {t.location && (
-                      <span className="text-[10px] text-white/40 truncate">{t.location}</span>
-                    )}
                   </div>
+                  {t.location && (
+                    <a href={t.source === 'ft' && t.pg_url ? `${t.pg_url}/venues` : t.pg_url || '#'}
+                      target="_blank" rel="noopener"
+                      className="flex items-center gap-1 mt-1 no-underline"
+                      style={{ color: 'rgba(255,255,255,0.5)' }}>
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>
+                      </svg>
+                      <span className="text-[10px] truncate">{t.location}</span>
+                    </a>
+                  )}
                 </div>
                 <div className="flex gap-1.5 ml-2 flex-shrink-0">
                   {t.source !== 'ft' && (
@@ -242,84 +250,79 @@ export default function Dashboard({ orgId, teamId, slug }) {
 function TeamsInTournament({ eventId, pgUrl, source, ageGroup }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [expanded, setExpanded] = useState(false)
 
-  useEffect(() => {
-    setLoading(true)
-    getTournamentTeams(eventId, ageGroup)
-      .then(d => setData(d))
-      .catch(() => setData({ teams: [], venues: [] }))
-      .finally(() => setLoading(false))
-  }, [eventId, ageGroup])
+  function handleToggle() {
+    if (!expanded && !data) {
+      // Fetch on first expand
+      setLoading(true)
+      getTournamentTeams(eventId, ageGroup)
+        .then(d => setData(d))
+        .catch(() => setData({ teams: [], venues: [] }))
+        .finally(() => setLoading(false))
+    }
+    setExpanded(v => !v)
+  }
 
   const teams = data?.teams || []
-  const venues = data?.venues || []
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center gap-2 py-4">
-        <svg className="diamond-spin w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="var(--navy-muted)" strokeWidth="2.5">
-          <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
-        </svg>
-        <span className="text-xs font-semibold" style={{ color: 'var(--navy-muted)' }}>Loading teams...</span>
-      </div>
-    )
-  }
-
-  if (teams.length === 0) {
-    return pgUrl ? (
-      <div className="text-center py-2">
-        <a href={pgUrl} target="_blank" rel="noopener"
-          className="inline-flex items-center gap-1.5 text-xs font-bold no-underline px-4 py-2 rounded-lg"
-          style={{ background: 'var(--gold)', color: 'var(--navy)' }}>
-          Check {source === 'ft' ? 'Five Tool' : 'Perfect Game'} for updates
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M7 17L17 7M17 7H7M17 7v10"/></svg>
-        </a>
-      </div>
-    ) : null
-  }
 
   return (
-    <div className="space-y-3">
-      {/* Venue info */}
-      {venues.length > 0 && (
-        <div>
-          {venues.map((v, i) => (
-            <a key={i} href={v.href} target="_blank" rel="noopener"
-              className="flex items-center gap-2 px-3 py-2 rounded-lg no-underline mb-1"
-              style={{ background: 'rgba(212,168,50,0.08)', border: '1px solid rgba(212,168,50,0.2)' }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold-dark)" strokeWidth="2" strokeLinecap="round">
-                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>
+    <div>
+      <button onClick={handleToggle}
+        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors active:scale-98"
+        style={{ background: 'var(--sky)', color: 'var(--navy)', border: '1px solid var(--border)' }}>
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"
+          style={{ transform: expanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }}>
+          <path d="M9 6l6 6-6 6"/>
+        </svg>
+        {ageGroup ? `${ageGroup} ` : ''}Teams Currently Registered
+        {teams.length > 0 && ` (${teams.length})`}
+      </button>
+
+      {expanded && (
+        <div className="mt-1.5">
+          {loading && (
+            <div className="flex items-center justify-center gap-2 py-3">
+              <svg className="diamond-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="var(--navy-muted)" strokeWidth="2.5">
+                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
               </svg>
-              <span className="text-xs font-semibold truncate" style={{ color: 'var(--navy)' }}>{v.name}</span>
-            </a>
-          ))}
+              <span className="text-[11px] font-semibold" style={{ color: 'var(--navy-muted)' }}>Loading...</span>
+            </div>
+          )}
+
+          {!loading && teams.length === 0 && pgUrl && (
+            <div className="text-center py-2">
+              <a href={pgUrl} target="_blank" rel="noopener"
+                className="inline-flex items-center gap-1.5 text-xs font-bold no-underline px-4 py-2 rounded-lg"
+                style={{ background: 'var(--gold)', color: 'var(--navy)' }}>
+                Check {source === 'ft' ? 'Five Tool' : 'Perfect Game'}
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M7 17L17 7M17 7H7M17 7v10"/></svg>
+              </a>
+            </div>
+          )}
+
+          {!loading && teams.length > 0 && (
+            <div className="grid grid-cols-2 gap-x-1 gap-y-0.5 rounded-lg overflow-hidden" style={{ border: '1px solid var(--border)' }}>
+              {teams.map((t, i) => (
+                <a key={t.name + i}
+                  href={t.href || '#'}
+                  target={t.href ? '_blank' : undefined}
+                  rel="noopener"
+                  className="block truncate no-underline px-2.5 py-1.5 transition-colors"
+                  style={{
+                    fontSize: '11px',
+                    lineHeight: '1.3',
+                    fontWeight: 500,
+                    color: 'var(--navy)',
+                    background: i % 4 < 2 ? 'var(--sky)' : 'white',
+                  }}>
+                  {t.name}
+                </a>
+              ))}
+            </div>
+          )}
         </div>
       )}
-
-      {/* Teams */}
-      <div>
-        <div className="text-[10px] font-bold uppercase tracking-[0.15em] mb-2" style={{ color: 'var(--navy-muted)' }}>
-          {ageGroup ? `${ageGroup} ` : ''}TEAMS ({teams.length})
-        </div>
-        <div className="grid grid-cols-2 gap-x-1 gap-y-0.5" style={{ fontSize: 0 }}>
-          {teams.map((t, i) => (
-            <a key={t.name + i}
-              href={t.href || '#'}
-              target={t.href ? '_blank' : undefined}
-              rel="noopener"
-              className="block truncate no-underline px-2 py-1.5 rounded transition-colors"
-              style={{
-                fontSize: '11px',
-                lineHeight: '1.3',
-                fontWeight: 500,
-                color: 'var(--navy)',
-                background: i % 4 < 2 ? 'var(--sky)' : 'transparent',
-              }}>
-              {t.name}
-            </a>
-          ))}
-        </div>
-      </div>
     </div>
   )
 }
