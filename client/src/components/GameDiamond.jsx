@@ -232,16 +232,13 @@ function BaseWithRunner({ x, y, name, base, onClick, interactive }) {
   const occupied = !!name
   return (
     <g onClick={() => onClick(base)} style={{ cursor: interactive ? 'pointer' : 'default' }}>
-      {occupied && (
-        <circle cx={x} cy={y} r="14" fill="rgba(212,168,50,0.25)" stroke="#d4a832" strokeWidth="1" />
-      )}
-      <rect x={x - 4} y={y - 4} width="8" height="8" rx="1"
-        fill={occupied ? '#d4a832' : 'white'}
-        stroke={occupied ? '#b8891e' : '#ccc'}
-        strokeWidth="0.8"
+      <rect x={x - 5} y={y - 5} width="10" height="10" rx="1"
+        fill={occupied ? '#e74c3c' : 'white'}
+        stroke={occupied ? '#c0392b' : '#ccc'}
+        strokeWidth={occupied ? '1.2' : '0.8'}
         transform={`rotate(45 ${x} ${y})`} />
       {occupied && (
-        <text x={x} y={y - 12} textAnchor="middle" fill="white" fontSize="6.5" fontWeight="700" fontFamily="sans-serif"
+        <text x={x} y={y - 11} textAnchor="middle" fill="white" fontSize="6.5" fontWeight="700" fontFamily="sans-serif"
           style={{ textShadow: '0 1px 3px rgba(0,0,0,0.7)' }}>
           {shortName(name)}
         </text>
