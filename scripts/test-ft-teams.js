@@ -8,69 +8,47 @@ const { getBrowser } = require('../server/scrapers/browser');
   });
   const page = await context.newPage();
 
-  const url = 'https://play.fivetoolyouth.org/events/five-tool-youth-super-nit-fivetool-youth-park-04-18-2026';
+  const url = 'https://play.fivetoolyouth.org/events/five-tool-youth-super-nit-fivetool-youth-park-04-18-2026/teams';
 
   // Capture JSON responses
-  const responses = [];
   page.on('response', async (response) => {
     const u = response.url();
     const ct = response.headers()['content-type'] || '';
     if (ct.includes('json') && u.includes('fivetool') && !u.includes('getcart')) {
       try {
         const j = await response.json();
-        responses.push({ url: u, data: j });
+        console.log('AJAX:', u.slice(0, 120));
+        console.log('  Keys:', Object.keys(j));
+        console.log('  Sample:', JSON.stringify(j).slice(0, 400));
       } catch (e) {}
     }
   });
 
-  console.log('Loading event page...');
+  console.log('Loading teams page...');
   await page.goto(url, { waitUntil: 'load', timeout: 45000 });
   await page.waitForTimeout(5000);
 
-  // Click the TEAMS tab within the event page (not the nav)
-  // Look for tab links within the event content area
-  const allLinks = await page.$$('a');
-  for (const link of allLinks) {
-    const href = await link.getAttribute('href').catch(() => '');
-    const text = (await link.textContent().catch(() => '')).trim();
-    if (text === 'TEAMS' && href && href.includes('/teams')) {
-      console.log('Found event TEAMS tab:', href);
-      await link.click();
-      await page.waitForTimeout(6000);
-      break;
+  // Click 14U specifically
+  console.log('Looking for 14U division link...');
+  const clicked = await page.evaluate(() => {
+    const links = document.querySelectorAll('a, button, div, span');
+    for (const el of links) {
+      if (el.textContent.trim() === '14U' && el.offsetParent !== null) {
+        el.click();
+        return true;
+      }
     }
-  }
-
-  // Now look for division buttons (14U specifically)
-  const allElements = await page.$$('a, button, span, div');
-  for (const el of allElements) {
-    const text = (await el.textContent().catch(() => '')).trim();
-    if (text === '14U') {
-      console.log('Clicking 14U division...');
-      await el.click();
-      await page.waitForTimeout(6000);
-      break;
-    }
-  }
-
-  console.log('\n=== JSON RESPONSES ===');
-  responses.forEach(r => {
-    console.log('URL:', r.url.slice(0, 150));
-    console.log('Keys:', Object.keys(r.data));
-    const str = JSON.stringify(r.data);
-    console.log('Length:', str.length, 'Sample:', str.slice(0, 500));
-    console.log('---');
+    return false;
   });
+  console.log('Clicked 14U:', clicked);
+  await page.waitForTimeout(8000);
 
-  // Get the visible text on the page now
+  // Get page text
   const text = await page.evaluate(() => document.body.innerText);
-  const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 2 && l.length < 80);
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 2 && l.length < 100);
 
-  // Filter for team-name-like entries (skip nav items)
-  const navItems = ['CART','LOGIN','TOURNAMENTS','RANKINGS','PAST RESULTS','MEMBERSHIP','BUY','TRYOUTS','RULES','CALCULATOR','ABOUT','CONTACT','FIVE TOOL','WEATHER','ALL EVENTS','INFO','TEAMS','VENUES','SCHEDULE','REGISTRATION','DIVISION:','Search','State'];
-  const filtered = lines.filter(l => !navItems.some(n => l.toUpperCase().includes(n)));
-  console.log('\n=== POTENTIAL TEAM NAMES ===');
-  filtered.forEach(l => console.log(' ', l));
+  console.log('\n=== PAGE TEXT AFTER 14U CLICK ===');
+  lines.forEach(l => console.log(' ', l));
 
   await context.close();
   await browser.close();
