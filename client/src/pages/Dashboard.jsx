@@ -240,44 +240,94 @@ export default function Dashboard({ orgId, teamId, slug }) {
 }
 
 function TeamsInTournament({ eventId, pgUrl, source, ageGroup }) {
-  const [teams, setTeams] = useState(null)
+  const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     setLoading(true)
     getTournamentTeams(eventId, ageGroup)
-      .then(t => setTeams(t))
-      .catch(() => setTeams([]))
+      .then(d => setData(d))
+      .catch(() => setData({ teams: [], venues: [] }))
       .finally(() => setLoading(false))
   }, [eventId, ageGroup])
 
-  if (loading) return <div className="text-xs text-center py-2" style={{ color: 'var(--navy-muted)' }}>Loading teams...</div>
+  const teams = data?.teams || []
+  const venues = data?.venues || []
 
-  if (!teams || teams.length === 0) {
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center gap-2 py-4">
+        <svg className="diamond-spin w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="var(--navy-muted)" strokeWidth="2.5">
+          <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+        </svg>
+        <span className="text-xs font-semibold" style={{ color: 'var(--navy-muted)' }}>Loading teams...</span>
+      </div>
+    )
+  }
+
+  if (teams.length === 0) {
     return pgUrl ? (
-      <div className="text-center">
+      <div className="text-center py-2">
         <a href={pgUrl} target="_blank" rel="noopener"
-          className="inline-block text-xs font-bold no-underline px-3 py-1.5 rounded-lg"
+          className="inline-flex items-center gap-1.5 text-xs font-bold no-underline px-4 py-2 rounded-lg"
           style={{ background: 'var(--gold)', color: 'var(--navy)' }}>
           Check {source === 'ft' ? 'Five Tool' : 'Perfect Game'} for updates
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M7 17L17 7M17 7H7M17 7v10"/></svg>
         </a>
       </div>
     ) : null
   }
 
   return (
-    <div>
-      <div className="text-[10px] font-bold uppercase tracking-[0.15em] mb-2" style={{ color: 'var(--navy-muted)' }}>
-        REGISTERED TEAMS ({teams.length})
-      </div>
-      <div className="flex flex-wrap gap-1.5">
-        {teams.map((t, i) => (
-          <span key={t.name + i}
-            className="text-xs font-medium px-2 py-1 rounded-full"
-            style={{ background: 'var(--sky)', color: 'var(--navy)', border: '1px solid var(--border)' }}>
-            {t.name}
-          </span>
-        ))}
+    <div className="space-y-3">
+      {/* Venue info */}
+      {venues.length > 0 && (
+        <div>
+          {venues.map((v, i) => (
+            <a key={i} href={v.href} target="_blank" rel="noopener"
+              className="flex items-center gap-2 px-3 py-2 rounded-lg no-underline mb-1"
+              style={{ background: 'rgba(212,168,50,0.08)', border: '1px solid rgba(212,168,50,0.2)' }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold-dark)" strokeWidth="2" strokeLinecap="round">
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>
+              </svg>
+              <span className="text-xs font-semibold truncate" style={{ color: 'var(--navy)' }}>{v.name}</span>
+            </a>
+          ))}
+        </div>
+      )}
+
+      {/* Teams */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-[10px] font-bold uppercase tracking-[0.15em]" style={{ color: 'var(--navy-muted)' }}>
+            {ageGroup ? `${ageGroup} ` : ''}TEAMS ({teams.length})
+          </div>
+        </div>
+        <div className="space-y-0.5">
+          {teams.map((t, i) => (
+            <a key={t.name + i}
+              href={t.href || '#'}
+              target={t.href ? '_blank' : undefined}
+              rel="noopener"
+              className="flex items-center gap-2.5 px-3 py-2 rounded-lg no-underline transition-colors"
+              style={{
+                background: i % 2 === 0 ? 'var(--sky)' : 'transparent',
+              }}>
+              <span className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0"
+                style={{ background: 'var(--navy)', color: 'white' }}>
+                {t.name.charAt(0)}
+              </span>
+              <span className="text-sm font-medium flex-1 truncate" style={{ color: 'var(--navy)' }}>
+                {t.name}
+              </span>
+              {t.href && (
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--navy-muted)" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0 opacity-40">
+                  <path d="M9 6l6 6-6 6"/>
+                </svg>
+              )}
+            </a>
+          ))}
+        </div>
       </div>
     </div>
   )

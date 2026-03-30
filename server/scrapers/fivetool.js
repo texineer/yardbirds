@@ -105,7 +105,7 @@ async function scrapeFtEventSchedule(eventSlug, teamName) {
 }
 
 // Scrape registered teams from an FT event teams page, grouped by division panel
-// Teams are in hidden panels with ids like "21open" containing <a> links
+// Also extracts venue info from the event page
 async function scrapeFtEventTeams(eventSlug, ageGroup) {
   const url = `${FT_BASE}/events/${eventSlug}/teams`;
   console.log(`[ft-scraper] Fetching event teams: ${url}${ageGroup ? ` (filtering for ${ageGroup})` : ''}`);
@@ -121,56 +121,62 @@ async function scrapeFtEventTeams(eventSlug, ageGroup) {
     await page.goto(url, { waitUntil: 'load', timeout: 45000 });
     await page.waitForTimeout(6000);
 
-    // Extract teams grouped by panel (each panel = one division)
-    const panels = await page.evaluate(() => {
-      const results = [];
+    // Extract teams grouped by panel + venue links
+    const data = await page.evaluate(() => {
+      // Teams by division panel
+      const panels = [];
       document.querySelectorAll('[id$="open"]').forEach(panel => {
         const teams = [];
         panel.querySelectorAll('a[href*="/team/details/"]').forEach(a => {
           const name = a.textContent.trim();
-          if (name && name.length > 2) teams.push({ name });
+          const href = a.href;
+          if (name && name.length > 2) teams.push({ name, href });
         });
-        if (teams.length > 0) results.push({ panelId: panel.id, teams });
+        if (teams.length > 0) panels.push({ panelId: panel.id, teams });
       });
-      return results;
+
+      // Venue links
+      const venues = [];
+      document.querySelectorAll('a[href*="/venues"], a[href*="maps.google"], a[href*="goo.gl"]').forEach(a => {
+        const text = a.textContent.trim();
+        const href = a.href;
+        if (text && text.length > 2) venues.push({ name: text, href });
+      });
+
+      return { panels, venues };
     });
 
     await context.close();
 
-    // If ageGroup specified, find the panel whose teams match that age group
-    // e.g., for "14U", find the panel where team names contain "14U" or "14u"
+    // Filter by age group
     let allTeams = [];
     if (ageGroup) {
-      const agePattern = ageGroup.replace(/U$/i, '').trim(); // "14U" → "14"
-      for (const panel of panels) {
-        // Check if any team in this panel has the age group in their name
+      const agePattern = ageGroup.replace(/U$/i, '').trim();
+      for (const panel of data.panels) {
         const hasAge = panel.teams.some(t => {
           const m = t.name.match(/(\d+)\s*[Uu]/);
           return m && m[1] === agePattern;
         });
-        if (hasAge) {
-          allTeams = allTeams.concat(panel.teams);
-        }
+        if (hasAge) allTeams = allTeams.concat(panel.teams);
       }
     } else {
-      // No filter — return all teams
-      for (const panel of panels) {
-        allTeams = allTeams.concat(panel.teams);
-      }
+      for (const panel of data.panels) allTeams = allTeams.concat(panel.teams);
     }
 
     // Deduplicate and sort
     const teamMap = new Map();
     for (const t of allTeams) {
-      teamMap.set(t.name.toLowerCase(), { name: t.name });
+      teamMap.set(t.name.toLowerCase(), { name: t.name, href: t.href });
     }
 
     const result = [...teamMap.values()].sort((a, b) => a.name.localeCompare(b.name));
     console.log(`[ft-scraper] Found ${result.length} teams${ageGroup ? ` in ${ageGroup}` : ''} for ${eventSlug}`);
-    return result;
+
+    // Return teams + venue info
+    return { teams: result, venues: data.venues };
   } catch (err) {
     console.log(`[ft-scraper] Error fetching event teams ${eventSlug}: ${err.message}`);
-    return [];
+    return { teams: [], venues: [] };
   }
 }
 

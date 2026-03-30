@@ -231,10 +231,10 @@ router.get('/tournaments/:eventId/teams', async (req, res) => {
       const { scrapeFtEventTeams } = require('../scrapers/fivetool');
       const slugMatch = tournament.pg_url?.match(/\/events\/([^/]+)/);
       if (slugMatch) {
-        const teams = await scrapeFtEventTeams(slugMatch[1], ageGroup);
-        return res.json(teams);
+        const result = await scrapeFtEventTeams(slugMatch[1], ageGroup);
+        return res.json(result);
       }
-      return res.json([]);
+      return res.json({ teams: [], venues: [] });
     }
 
     // PG: try to extract teams from existing games in DB
@@ -244,13 +244,13 @@ router.get('/tournaments/:eventId/teams', async (req, res) => {
       for (const g of games) {
         if (g.opponent_name) teamSet.set(g.opponent_name.toLowerCase(), { name: g.opponent_name });
       }
-      return res.json([...teamSet.values()].sort((a, b) => a.name.localeCompare(b.name)));
+      return res.json({ teams: [...teamSet.values()].sort((a, b) => a.name.localeCompare(b.name)), venues: [] });
     }
 
     // PG: try scraping team links from event page
     const { scrapeRegisteredTeams } = require('../scrapers/tournament');
     const teams = await scrapeRegisteredTeams(eventId);
-    res.json(teams);
+    res.json({ teams, venues: [] });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
