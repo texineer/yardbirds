@@ -24,8 +24,6 @@ export default function LineupSetup() {
   const [awayLineup, setAwayLineup] = useState(
     Array.from({ length: 9 }, (_, i) => ({ playerName: '', jerseyNumber: '', position: '' }))
   )
-  const [rosterSuggestions, setRosterSuggestions] = useState([])
-  const [suggestingIdx, setSuggestingIdx] = useState(null)
   const [opponentTeam, setOpponentTeam] = useState(null)
 
   useEffect(() => {
@@ -89,11 +87,17 @@ export default function LineupSetup() {
     })
   }
 
-  function pickSuggestion(side, idx, player) {
-    updateEntry(side, idx, 'playerName', player.name)
-    updateEntry(side, idx, 'jerseyNumber', player.number || '')
-    updateEntry(side, idx, 'position', player.position || '')
-    setSuggestingIdx(null)
+  function pickPlayer(setter, idx, player) {
+    setter(prev => {
+      const next = [...prev]
+      next[idx] = {
+        ...next[idx],
+        playerName: player.name,
+        jerseyNumber: player.number || '',
+        position: player.position || '',
+      }
+      return next
+    })
   }
 
   async function handleSaveAndStart() {
@@ -128,7 +132,7 @@ export default function LineupSetup() {
   const hasEnough = ourLineup.some(e => e.playerName) && themLineup.some(e => e.playerName)
 
   return (
-    <div className="space-y-4 pb-8" onClick={() => setSuggestingIdx(null)}>
+    <div className="space-y-4 pb-8">
       {/* Header */}
       <div>
         <div className="font-display text-2xl" style={{ color: 'var(--navy)' }}>LINEUP SETUP</div>
@@ -193,13 +197,14 @@ export default function LineupSetup() {
           </div>
 
           {(activeTab === 'our' ? ourLineup : themLineup).map((entry, idx) => {
-            const side = activeTab === 'our' ? (ourSide === 'home' ? 'home' : 'away') : (ourSide === 'home' ? 'away' : 'home')
             const setter = activeTab === 'our' ? ourSetter : themSetter
-            const key = `${side}-${idx}`
+            const players = activeTab === 'our'
+              ? (team?.players || [])
+              : (opponentTeam?.players || [])
             const filled = !!entry.playerName
 
             return (
-              <div key={idx} className="relative">
+              <div key={idx}>
                 <div className="flex items-center gap-2 py-2 px-2 rounded-xl transition-colors"
                   style={{
                     borderLeft: `3px solid ${filled ? 'var(--gold)' : 'var(--border)'}`,
@@ -207,29 +212,45 @@ export default function LineupSetup() {
                   }}>
                   <span className="font-display text-lg w-6 text-center flex-shrink-0"
                     style={{ color: 'var(--navy-muted)' }}>{idx + 1}</span>
-                  <input
-                    className="flex-1 h-11 px-3 rounded-lg border text-sm font-medium focus:outline-none"
-                    style={{ borderColor: 'var(--border)', color: 'var(--navy)', background: 'var(--cream)' }}
-                    placeholder="Player name..."
-                    value={entry.playerName}
-                    onChange={e => {
-                      setter(prev => {
-                        const next = [...prev]
-                        next[idx] = { ...next[idx], playerName: e.target.value }
-                        return next
-                      })
-                    }}
-                    onFocus={e => {
-                      e.stopPropagation()
-                      const players = activeTab === 'our'
-                        ? (team?.players || [])
-                        : (opponentTeam?.players || [])
-                      if (players.length > 0) {
-                        setRosterSuggestions(players)
-                        setSuggestingIdx(key)
-                      }
-                    }}
-                  />
+                  {players.length > 0 ? (
+                    <select
+                      className="flex-1 h-11 px-2 rounded-lg border text-sm font-medium focus:outline-none"
+                      style={{ borderColor: 'var(--border)', color: filled ? 'var(--navy)' : 'var(--navy-muted)', background: 'var(--cream)' }}
+                      value={entry.playerName}
+                      onChange={e => {
+                        const selected = players.find(p => p.name === e.target.value)
+                        if (selected) {
+                          pickPlayer(setter, idx, selected)
+                        } else {
+                          setter(prev => {
+                            const next = [...prev]
+                            next[idx] = { ...next[idx], playerName: '', jerseyNumber: '', position: '' }
+                            return next
+                          })
+                        }
+                      }}>
+                      <option value="">Select player...</option>
+                      {players.map(p => (
+                        <option key={p.id || p.name} value={p.name}>
+                          {p.name}{p.number ? ` #${p.number}` : ''}{p.position ? ` (${p.position})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      className="flex-1 h-11 px-3 rounded-lg border text-sm font-medium focus:outline-none"
+                      style={{ borderColor: 'var(--border)', color: 'var(--navy)', background: 'var(--cream)' }}
+                      placeholder="Player name..."
+                      value={entry.playerName}
+                      onChange={e => {
+                        setter(prev => {
+                          const next = [...prev]
+                          next[idx] = { ...next[idx], playerName: e.target.value }
+                          return next
+                        })
+                      }}
+                    />
+                  )}
                   <select
                     className="h-11 w-16 rounded-lg border text-sm font-bold text-center appearance-none"
                     style={{ borderColor: 'var(--border)', color: 'var(--navy)', background: 'var(--cream)' }}
@@ -245,34 +266,6 @@ export default function LineupSetup() {
                     {POSITIONS.map(p => <option key={p} value={p}>{p}</option>)}
                   </select>
                 </div>
-
-                {/* Roster autocomplete dropdown */}
-                {suggestingIdx === key && rosterSuggestions.length > 0 && (
-                  <div className="absolute left-0 right-0 z-30 card shadow-lg overflow-hidden"
-                    style={{ top: '100%', maxHeight: '200px', overflowY: 'auto' }}
-                    onClick={e => e.stopPropagation()}>
-                    {rosterSuggestions
-                      .filter(p => !entry.playerName || p.name.toLowerCase().includes(entry.playerName.toLowerCase()))
-                      .slice(0, 8)
-                      .map(player => (
-                        <button key={player.id}
-                          className="w-full flex items-center gap-3 px-4 py-3 text-left border-b hover:bg-[var(--sky)] transition-colors"
-                          style={{ borderColor: 'var(--border)' }}
-                          onMouseDown={e => {
-                            e.preventDefault()
-                            pickSuggestion(side, idx, player)
-                          }}>
-                          <span className="w-7 h-7 rounded-full flex items-center justify-center font-display text-sm text-white flex-shrink-0"
-                            style={{ background: 'var(--navy)' }}>
-                            {player.name.charAt(0)}
-                          </span>
-                          <span className="flex-1 text-sm font-medium" style={{ color: 'var(--navy)' }}>{player.name}</span>
-                          {player.number && <span className="text-xs" style={{ color: 'var(--navy-muted)' }}>#{player.number}</span>}
-                          {player.position && <span className="text-xs font-bold" style={{ color: 'var(--powder)' }}>{player.position}</span>}
-                        </button>
-                      ))}
-                  </div>
-                )}
               </div>
             )
           })}
