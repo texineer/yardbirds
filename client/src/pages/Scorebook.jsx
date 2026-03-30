@@ -235,12 +235,18 @@ export default function Scorebook() {
   const batterIdx = batterSide === 'home'
     ? (state?.home_batter_idx ?? 0)
     : (state?.away_batter_idx ?? 0)
-  const currentBatter = batterLineup[batterIdx % batterLineup.length] || batterLineup[0]
-  const currentPitcher = pitcherLineup.find(e => e.position === 'P' && e.active) || pitcherLineup[0]
+  const currentBatter = batterLineup.length > 0
+    ? (batterLineup[batterIdx % batterLineup.length] || batterLineup[0])
+    : null
+  const currentPitcher = pitcherLineup.find(e => e.position === 'P' && e.active) || pitcherLineup[0] || null
 
-  function advanceBatterIdx() {
-    const newIdx = (batterIdx + 1) % (batterLineup.length || 1)
-    const patch = batterSide === 'home'
+  function advanceBatterIdx(s = state, hl = homeLineup, al = awayLineup) {
+    const side = (s?.half === 'top') ? 'away' : 'home'
+    const lineup = (side === 'home' ? hl : al).filter(e => e.active !== 0)
+    if (lineup.length === 0) return
+    const idx = side === 'home' ? (s?.home_batter_idx ?? 0) : (s?.away_batter_idx ?? 0)
+    const newIdx = (idx + 1) % lineup.length
+    const patch = side === 'home'
       ? { homeBatterIdx: newIdx }
       : { awayBatterIdx: newIdx }
     syncState(patch)
@@ -249,10 +255,12 @@ export default function Scorebook() {
   // ── Start New PA ───────────────────────────────────────────────────────────
 
   async function startNextPA(s = state, hl = homeLineup, al = awayLineup) {
-    const side = (s?.half === 'top') ? 'away' : 'home'
+    if (!s) return
+    const side = (s.half === 'top') ? 'away' : 'home'
     const lineup = (side === 'home' ? hl : al).filter(e => e.active !== 0)
-    const idx = side === 'home' ? (s?.home_batter_idx ?? 0) : (s?.away_batter_idx ?? 0)
-    const batter = lineup[idx % lineup.length] || lineup[0]
+    if (lineup.length === 0) return
+    const idx = side === 'home' ? (s.home_batter_idx ?? 0) : (s.away_batter_idx ?? 0)
+    const batter = lineup[idx % lineup.length]
     const pLineup = (side === 'home' ? al : hl).filter(e => e.active !== 0)
     const pitcher = pLineup.find(e => e.position === 'P' && e.active) || pLineup[0]
 
@@ -266,8 +274,8 @@ export default function Scorebook() {
         pitcherName: pitcher?.player_name || 'Unknown',
       })
       setCurrentPaId(result.paId)
-    } catch {
-      showToast('Error starting at-bat')
+    } catch (err) {
+      console.error('startNextPA error:', err)
     }
 
     setPhase(PHASE.PITCH)
@@ -496,7 +504,15 @@ export default function Scorebook() {
 
   if (loading) return <LoadingSpinner />
   if (error) return <div className="text-center py-12 text-sm" style={{ color: 'var(--loss)' }}>{error}</div>
-  if (!state) return null
+  if (!state) return (
+    <div className="text-center py-12">
+      <div className="font-display text-xl mb-2" style={{ color: 'var(--navy)' }}>NO SCOREBOOK DATA</div>
+      <p className="text-sm" style={{ color: 'var(--navy-muted)' }}>Could not load game state.</p>
+      <Link to={`/${slug}/game/${gameId}/lineup`} className="inline-block mt-4 text-sm font-bold no-underline" style={{ color: 'var(--gold-dark)' }}>
+        Go to lineup setup
+      </Link>
+    </div>
+  )
 
   const halfLabel = state.half === 'top' ? '▲' : '▼'
   const inningLabel = `${halfLabel} ${ORDINALS[state.inning] || `${state.inning}TH`}`

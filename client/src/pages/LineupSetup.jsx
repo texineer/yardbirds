@@ -122,7 +122,7 @@ export default function LineupSetup() {
       await saveLineup(parseInt(gameId), { teamSide: 'away', entries: awayEntries })
       await startScorebookGame(parseInt(gameId))
 
-      navigate(`../game/${gameId}/score`, { relative: 'path' })
+      navigate(`/${slug}/game/${gameId}/score`)
     } catch (e) {
       alert(e.message)
     } finally {
