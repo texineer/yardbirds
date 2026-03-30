@@ -49,11 +49,11 @@ export default function TournamentBracket() {
           <div className="card p-6 text-center">
             <div className="font-display text-xl mb-2" style={{ color: 'var(--navy-muted)' }}>NO BRACKETS YET</div>
             <p className="text-sm" style={{ color: 'var(--navy-muted)' }}>
-              Brackets will appear after pool play is complete. Check the PG site for the latest.
+              Brackets will appear after pool play is complete.
             </p>
           </div>
           <a href={`${PG_BASE}/events/Brackets.aspx?event=${eventId}`} target="_blank" rel="noopener"
-            className="card block no-underline p-4 transition-shadow hover:shadow-md">
+            className="card block no-underline p-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'var(--gold)' }}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--navy)" strokeWidth="2" strokeLinecap="round">
@@ -69,7 +69,7 @@ export default function TournamentBracket() {
         </div>
       ) : (
         <>
-          {/* Bracket tabs (if multiple) */}
+          {/* Bracket tabs */}
           {brackets.length > 1 && (
             <div className="flex rounded-xl overflow-hidden border-2 p-0.5 gap-0.5"
               style={{ borderColor: 'var(--border)', background: 'var(--sky)' }}>
@@ -87,13 +87,8 @@ export default function TournamentBracket() {
             </div>
           )}
 
-          {/* Bracket title */}
-          {activeBracket && (
-            <div className="section-label">{activeBracket.name}</div>
-          )}
-
-          {/* Bracket games grouped by round */}
-          {activeBracket && <BracketTree games={activeBracket.games} />}
+          {/* Visual bracket */}
+          {activeBracket && <BracketDiagram games={activeBracket.games} name={activeBracket.name} />}
 
           {/* PG link */}
           <a href={`${PG_BASE}/events/Brackets.aspx?event=${eventId}`} target="_blank" rel="noopener"
@@ -106,110 +101,211 @@ export default function TournamentBracket() {
   )
 }
 
-function BracketTree({ games }) {
+// ── Visual Bracket Diagram ────────────────────────────────────────────────────
+
+function BracketDiagram({ games, name }) {
   if (!games || games.length === 0) return null
 
   // Group by round
-  const rounds = {}
+  const roundMap = {}
   for (const g of games) {
     const round = g.round || g.bracket_round || 'Game'
-    if (!rounds[round]) rounds[round] = []
-    rounds[round].push(g)
+    if (!roundMap[round]) roundMap[round] = []
+    roundMap[round].push(g)
   }
 
-  // Order rounds: Quarterfinal → Semifinal → Final
   const roundOrder = ['Quarterfinal', 'Semifinal', 'Final', 'Game']
-  const sortedRounds = Object.entries(rounds).sort(([a], [b]) => {
-    const ai = roundOrder.indexOf(a)
-    const bi = roundOrder.indexOf(b)
-    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi)
-  })
+  const rounds = Object.entries(roundMap)
+    .sort(([a], [b]) => {
+      const ai = roundOrder.indexOf(a)
+      const bi = roundOrder.indexOf(b)
+      return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi)
+    })
+    .map(([name, games]) => ({ name, games }))
+
+  // Layout constants
+  const MATCHUP_W = 200
+  const MATCHUP_H = 72
+  const COL_GAP = 40
+  const ROW_GAP = 16
+
+  // Calculate total height based on first round
+  const firstRound = rounds[0]
+  const firstRoundCount = firstRound?.games.length || 1
+  const totalH = firstRoundCount * (MATCHUP_H + ROW_GAP) - ROW_GAP + 40
+  const totalW = rounds.length * (MATCHUP_W + COL_GAP) - COL_GAP + 20
 
   return (
-    <div className="space-y-4">
-      {sortedRounds.map(([round, roundGames]) => (
-        <div key={round}>
-          <div className="text-[10px] font-bold uppercase tracking-[0.15em] mb-2" style={{ color: 'var(--gold-dark)' }}>
-            {round === 'Final' ? 'CHAMPIONSHIP' : round.toUpperCase()}
-          </div>
-          <div className="space-y-2">
-            {roundGames.map((game, i) => (
-              <GameCard key={i} game={game} isFinal={round === 'Final'} />
-            ))}
-          </div>
-        </div>
-      ))}
+    <div>
+      <div className="section-label mb-2">{name}</div>
+      <div className="overflow-x-auto -mx-4 px-4 pb-2">
+        <svg width={totalW} height={totalH} viewBox={`0 0 ${totalW} ${totalH}`}
+          style={{ minWidth: totalW, display: 'block' }}>
+
+          {rounds.map((round, colIdx) => {
+            const x = colIdx * (MATCHUP_W + COL_GAP) + 10
+            // Vertical spacing increases per round (bracket convergence)
+            const gamesInCol = round.games.length
+            const colHeight = totalH - 40
+            const spacing = gamesInCol > 1 ? colHeight / gamesInCol : 0
+            const startY = gamesInCol > 1 ? (colHeight - (gamesInCol - 1) * spacing) / 2 + 20 : totalH / 2 - MATCHUP_H / 2
+
+            return (
+              <g key={colIdx}>
+                {/* Round label */}
+                <text x={x + MATCHUP_W / 2} y={14} textAnchor="middle"
+                  fill="var(--gold-dark, #b8891e)" fontSize="10" fontWeight="700"
+                  fontFamily="'Bebas Neue', sans-serif" letterSpacing="0.15em">
+                  {round.name === 'Final' ? 'CHAMPIONSHIP' : round.name.toUpperCase()}
+                </text>
+
+                {round.games.map((game, gameIdx) => {
+                  const y = gamesInCol > 1 ? startY + gameIdx * spacing : startY
+
+                  const home = game.homeTeam || { name: game.opponent_name?.split(' vs ')[0] || '?', seed: game.home_seed, score: game.score_us }
+                  const away = game.awayTeam || { name: game.opponent_name?.split(' vs ')[1] || '?', seed: game.away_seed, score: game.score_them }
+                  const homeWon = home.score != null && away.score != null && home.score > away.score
+                  const awayWon = home.score != null && away.score != null && away.score > home.score
+                  const isFinal = round.name === 'Final'
+                  const gameTime = game.gameTime || game.game_time || ''
+
+                  // Draw connector lines to next round
+                  const nextRound = rounds[colIdx + 1]
+                  if (nextRound && gameIdx % 2 === 0) {
+                    const nextGameIdx = Math.floor(gameIdx / 2)
+                    const nextGamesInCol = nextRound.games.length
+                    const nextSpacing = nextGamesInCol > 1 ? colHeight / nextGamesInCol : 0
+                    const nextStartY = nextGamesInCol > 1 ? (colHeight - (nextGamesInCol - 1) * nextSpacing) / 2 + 20 : totalH / 2 - MATCHUP_H / 2
+                    const nextY = nextGamesInCol > 1 ? nextStartY + nextGameIdx * nextSpacing : nextStartY
+
+                    const midX = x + MATCHUP_W + COL_GAP / 2
+                    const y1 = y + MATCHUP_H / 2
+                    const y2Top = gameIdx < round.games.length - 1
+                      ? (gamesInCol > 1 ? startY + (gameIdx + 1) * spacing : startY) + MATCHUP_H / 2
+                      : y1
+                    const nextMidY = nextY + MATCHUP_H / 2
+
+                    return (
+                      <g key={`line-${colIdx}-${gameIdx}`}>
+                        {/* Line from this matchup right */}
+                        <line x1={x + MATCHUP_W} y1={y1} x2={midX} y2={y1} stroke="var(--border)" strokeWidth="1.5" />
+                        {/* Line from next matchup (below) right */}
+                        {y2Top !== y1 && (
+                          <line x1={x + MATCHUP_W} y1={y2Top} x2={midX} y2={y2Top} stroke="var(--border)" strokeWidth="1.5" />
+                        )}
+                        {/* Vertical connector */}
+                        {y2Top !== y1 && (
+                          <line x1={midX} y1={y1} x2={midX} y2={y2Top} stroke="var(--border)" strokeWidth="1.5" />
+                        )}
+                        {/* Line to next round */}
+                        <line x1={midX} y1={nextMidY} x2={x + MATCHUP_W + COL_GAP} y2={nextMidY} stroke="var(--border)" strokeWidth="1.5" />
+                      </g>
+                    )
+                  }
+
+                  return null
+                })}
+
+                {/* Matchup boxes */}
+                {round.games.map((game, gameIdx) => {
+                  const y = gamesInCol > 1 ? startY + gameIdx * spacing : startY
+
+                  const home = game.homeTeam || { name: game.opponent_name?.split(' vs ')[0] || '?', seed: game.home_seed, score: game.score_us }
+                  const away = game.awayTeam || { name: game.opponent_name?.split(' vs ')[1] || '?', seed: game.away_seed, score: game.score_them }
+                  const homeWon = home.score != null && away.score != null && home.score > away.score
+                  const awayWon = home.score != null && away.score != null && away.score > home.score
+                  const isFinal = round.name === 'Final'
+                  const gameTime = game.gameTime || game.game_time || ''
+
+                  return (
+                    <g key={`matchup-${colIdx}-${gameIdx}`}>
+                      {/* Box background */}
+                      <rect x={x} y={y} width={MATCHUP_W} height={MATCHUP_H} rx="6"
+                        fill="white" stroke={isFinal ? 'var(--gold, #D4A832)' : 'var(--border, #D8E4EC)'}
+                        strokeWidth={isFinal ? 2 : 1} />
+
+                      {/* Time bar */}
+                      <rect x={x} y={y} width={MATCHUP_W} height={16} rx="6" fill="var(--sky, #F2F7FA)" />
+                      <rect x={x} y={y + 10} width={MATCHUP_W} height={6} fill="var(--sky, #F2F7FA)" />
+                      <text x={x + 6} y={y + 11} fontSize="8" fontWeight="700" fill="var(--navy-muted, #5A7A92)"
+                        fontFamily="'DM Sans', sans-serif">
+                        {gameTime || '—'}
+                      </text>
+
+                      {/* Home team row */}
+                      <line x1={x} y1={y + 16} x2={x + MATCHUP_W} y2={y + 16} stroke="var(--border, #D8E4EC)" strokeWidth="0.5" />
+                      {home.seed && (
+                        <circle cx={x + 14} cy={y + 30} r="8" fill="var(--navy, #2B3E50)" />
+                      )}
+                      {home.seed && (
+                        <text x={x + 14} y={y + 33} textAnchor="middle" fontSize="8" fontWeight="700" fill="white"
+                          fontFamily="'DM Sans', sans-serif">{home.seed}</text>
+                      )}
+                      <text x={x + (home.seed ? 28 : 8)} y={y + 33}
+                        fontSize="10" fontWeight={homeWon ? '700' : '500'}
+                        fill={homeWon ? 'var(--win, #1B7340)' : 'var(--navy, #2B3E50)'}
+                        fontFamily="'DM Sans', sans-serif"
+                        clipPath={`rect(${x},${y+16},${MATCHUP_W - 30},${MATCHUP_H})`}>
+                        {truncate(home.name, 18)}
+                      </text>
+                      <text x={x + MATCHUP_W - 8} y={y + 34} textAnchor="end"
+                        fontSize="14" fontWeight="700"
+                        fill={homeWon ? 'var(--win, #1B7340)' : 'var(--navy, #2B3E50)'}
+                        fontFamily="'Bebas Neue', sans-serif"
+                        opacity={homeWon ? 1 : 0.5}>
+                        {home.score ?? '—'}
+                      </text>
+
+                      {/* Divider */}
+                      <line x1={x + 4} y1={y + 44} x2={x + MATCHUP_W - 4} y2={y + 44} stroke="var(--border, #D8E4EC)" strokeWidth="0.5" />
+
+                      {/* Away team row */}
+                      {away.seed && (
+                        <circle cx={x + 14} cy={y + 58} r="8" fill="var(--navy-muted, #5A7A92)" />
+                      )}
+                      {away.seed && (
+                        <text x={x + 14} y={y + 61} textAnchor="middle" fontSize="8" fontWeight="700" fill="white"
+                          fontFamily="'DM Sans', sans-serif">{away.seed}</text>
+                      )}
+                      <text x={x + (away.seed ? 28 : 8)} y={y + 61}
+                        fontSize="10" fontWeight={awayWon ? '700' : '500'}
+                        fill={awayWon ? 'var(--win, #1B7340)' : 'var(--navy, #2B3E50)'}
+                        fontFamily="'DM Sans', sans-serif">
+                        {truncate(away.name, 18)}
+                      </text>
+                      <text x={x + MATCHUP_W - 8} y={y + 62} textAnchor="end"
+                        fontSize="14" fontWeight="700"
+                        fill={awayWon ? 'var(--win, #1B7340)' : 'var(--navy, #2B3E50)'}
+                        fontFamily="'Bebas Neue', sans-serif"
+                        opacity={awayWon ? 1 : 0.5}>
+                        {away.score ?? '—'}
+                      </text>
+
+                      {/* Championship label */}
+                      {isFinal && (homeWon || awayWon) && (
+                        <>
+                          <rect x={x + MATCHUP_W / 2 - 30} y={y + MATCHUP_H - 2} width={60} height={14} rx="3"
+                            fill="var(--gold, #D4A832)" />
+                          <text x={x + MATCHUP_W / 2} y={y + MATCHUP_H + 9} textAnchor="middle"
+                            fontSize="7" fontWeight="700" fill="var(--navy, #2B3E50)"
+                            fontFamily="'Bebas Neue', sans-serif" letterSpacing="0.1em">
+                            CHAMPION
+                          </text>
+                        </>
+                      )}
+                    </g>
+                  )
+                })}
+              </g>
+            )
+          })}
+        </svg>
+      </div>
     </div>
   )
 }
 
-function GameCard({ game, isFinal }) {
-  // Handle both scraped format (homeTeam/awayTeam objects) and DB format (opponent_name, etc.)
-  const homeTeam = game.homeTeam || { name: game.opponent_name?.split(' vs ')[0] || '?', seed: game.home_seed, score: game.score_us }
-  const awayTeam = game.awayTeam || { name: game.opponent_name?.split(' vs ')[1] || '?', seed: game.away_seed, score: game.score_them }
-  const gameTime = game.gameTime || game.game_time || ''
-  const field = game.field || ''
-  const gameDate = game.gameDate || game.game_date || ''
-  const homeWon = homeTeam.score != null && awayTeam.score != null && homeTeam.score > awayTeam.score
-  const awayWon = homeTeam.score != null && awayTeam.score != null && awayTeam.score > homeTeam.score
-
-  return (
-    <div className="card overflow-hidden" style={{ borderColor: isFinal ? 'var(--gold)' : undefined, borderWidth: isFinal ? '2px' : undefined }}>
-      {/* Game info header */}
-      <div className="flex items-center justify-between px-3 py-1.5" style={{ background: 'var(--sky)' }}>
-        <span className="text-[10px] font-bold" style={{ color: 'var(--navy-muted)' }}>
-          {gameDate && formatBracketDate(gameDate)} {gameTime && `· ${gameTime}`}
-        </span>
-        {field && (
-          <span className="text-[10px] font-bold truncate ml-2" style={{ color: 'var(--navy-muted)' }}>
-            {field}
-          </span>
-        )}
-      </div>
-
-      {/* Home team */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b" style={{ borderColor: 'var(--border)', background: homeWon ? 'rgba(27,115,64,0.04)' : undefined }}>
-        {homeTeam.seed && (
-          <span className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0"
-            style={{ background: 'var(--navy)', color: 'white' }}>
-            {homeTeam.seed}
-          </span>
-        )}
-        <span className={`flex-1 text-sm truncate ${homeWon ? 'font-bold' : 'font-medium'}`}
-          style={{ color: 'var(--navy)' }}>
-          {homeTeam.name}
-        </span>
-        <span className={`font-display text-xl w-8 text-right ${homeWon ? '' : 'opacity-60'}`}
-          style={{ color: homeWon ? 'var(--win)' : 'var(--navy)' }}>
-          {homeTeam.score ?? '—'}
-        </span>
-      </div>
-
-      {/* Away team */}
-      <div className="flex items-center gap-2 px-3 py-2" style={{ background: awayWon ? 'rgba(27,115,64,0.04)' : undefined }}>
-        {awayTeam.seed && (
-          <span className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0"
-            style={{ background: 'var(--navy-muted)', color: 'white' }}>
-            {awayTeam.seed}
-          </span>
-        )}
-        <span className={`flex-1 text-sm truncate ${awayWon ? 'font-bold' : 'font-medium'}`}
-          style={{ color: 'var(--navy)' }}>
-          {awayTeam.name}
-        </span>
-        <span className={`font-display text-xl w-8 text-right ${awayWon ? '' : 'opacity-60'}`}
-          style={{ color: awayWon ? 'var(--win)' : 'var(--navy)' }}>
-          {awayTeam.score ?? '—'}
-        </span>
-      </div>
-    </div>
-  )
-}
-
-function formatBracketDate(dateStr) {
-  if (!dateStr) return ''
-  try {
-    const d = new Date(dateStr + 'T00:00:00')
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-  } catch { return dateStr }
+function truncate(str, len) {
+  if (!str) return '?'
+  return str.length > len ? str.slice(0, len - 1) + '...' : str
 }
