@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Routes, Route, Link, useLocation, useParams } from 'react-router-dom'
 import { getTeamBySlug } from './api'
+import { useAuth } from './context/AuthContext'
 import Dashboard from './pages/Dashboard'
 import Schedule from './pages/Schedule'
 import GameDetail from './pages/GameDetail'
@@ -9,9 +10,11 @@ import TeamSearch from './pages/TeamSearch'
 import TournamentSchedule from './pages/TournamentSchedule'
 import TournamentBracket from './pages/TournamentBracket'
 import Landing from './pages/Landing'
+import Auth from './pages/Auth'
 import LineupSetup from './pages/LineupSetup'
 import Scorebook from './pages/Scorebook'
 import LiveScoreboard from './pages/LiveScoreboard'
+import TeamMembers from './pages/TeamMembers'
 import LoadingSpinner from './components/LoadingSpinner'
 
 function App() {
@@ -22,6 +25,7 @@ function App() {
       <Routes>
         {/* Landing page — no header/nav */}
         <Route path="/" element={<Landing />} />
+        <Route path="/login" element={<Auth />} />
         {/* Team pages — with header/nav */}
         <Route path="/:slug/*" element={<TeamLayout />} />
       </Routes>
@@ -34,6 +38,7 @@ function TeamLayout() {
   const location = useLocation()
   const [team, setTeam] = useState(null)
   const [loading, setLoading] = useState(true)
+  const { user, hasTeamRole } = useAuth()
 
   useEffect(() => {
     setLoading(true)
@@ -56,10 +61,13 @@ function TeamLayout() {
     </div>
   )
 
+  const isAdmin = user && hasTeamRole(team.pg_org_id, team.pg_team_id, ['admin'])
+
   const navItems = [
     { path: `/${slug}`, label: 'Home', icon: HomeIcon },
     { path: `/${slug}/schedule`, label: 'Schedule', icon: CalendarIcon },
     { path: `/${slug}/search`, label: 'Teams', icon: SearchIcon },
+    ...(isAdmin ? [{ path: `/${slug}/members`, label: 'Members', icon: MembersIcon }] : []),
   ]
 
   return (
@@ -71,12 +79,19 @@ function TeamLayout() {
             <img src={team.logo_url || '/yardbirds-logo.png'} alt="" className="w-9 h-9 object-contain" />
             <div>
               <span className="font-display text-xl text-white tracking-wide leading-none">{(team.name || slug).toUpperCase()}</span>
-              <span className="block text-[10px] font-semibold tracking-[0.2em] uppercase" style={{ color: 'var(--gold)' }}>BleacherBox</span>
+              <img src="/bleacherbox_logo.png" alt="BleacherBox" className="h-3.5 object-contain" />
             </div>
           </Link>
-          <Link to="/" className="text-[10px] font-bold uppercase tracking-wider no-underline px-2 py-1 rounded" style={{ color: 'var(--gold)', background: 'rgba(255,255,255,0.1)' }}>
-            All Teams
-          </Link>
+          <div className="flex items-center gap-2">
+            {user && (
+              <span className="text-[10px] font-semibold text-white opacity-50 hidden sm:inline">
+                {user.display_name || user.email}
+              </span>
+            )}
+            <Link to="/" className="text-[10px] font-bold uppercase tracking-wider no-underline px-2 py-1 rounded" style={{ color: 'var(--gold)', background: 'rgba(255,255,255,0.1)' }}>
+              All Teams
+            </Link>
+          </div>
         </div>
         <div className="stitch-line" />
       </header>
@@ -94,6 +109,7 @@ function TeamLayout() {
           <Route path="/tournament/:eventId/schedule" element={<TournamentSchedule />} />
           <Route path="/tournament/:eventId/bracket" element={<TournamentBracket />} />
           <Route path="/search" element={<TeamSearch />} />
+          <Route path="/members" element={<TeamMembers orgId={team.pg_org_id} teamId={team.pg_team_id} />} />
         </Routes>
       </main>
 
@@ -146,6 +162,15 @@ function SearchIcon({ active }) {
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
       stroke={active ? 'var(--gold-dark)' : 'currentColor'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="11" cy="11" r="7" /><path d="M21 21l-4.35-4.35" />
+    </svg>
+  )
+}
+
+function MembersIcon({ active }) {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+      stroke={active ? 'var(--gold-dark)' : 'currentColor'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
     </svg>
   )
 }

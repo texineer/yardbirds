@@ -5,6 +5,8 @@ services:
       - "3001:3001"
     volumes:
       - yardbirds-data:/app/data
+    environment:
+      - SESSION_SECRET=${SESSION_SECRET:-bleacherbox-prod-change-me}
     restart: unless-stopped
 
 volumes:

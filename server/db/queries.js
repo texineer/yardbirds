@@ -465,6 +465,77 @@ async function getFullScorebookState(gameId) {
   return { state, homeLineup, awayLineup, inningScores, pitchCounts, plateAppearances };
 }
 
+// ── Users & Roles ─────────────────────────────────────────────────────────
+
+async function createUser({ email, passwordHash, displayName }) {
+  const db = await getDb();
+  db.run(
+    `INSERT INTO users (email, password_hash, display_name) VALUES (?, ?, ?)`,
+    [email, passwordHash, displayName || null]
+  );
+  const result = db.exec('SELECT last_insert_rowid() as id');
+  const id = result[0].values[0][0];
+  saveDb();
+  return id;
+}
+
+async function getUserByEmail(email) {
+  const db = await getDb();
+  return get(db, 'SELECT * FROM users WHERE email = ?', [email]);
+}
+
+async function getUserById(id) {
+  const db = await getDb();
+  return get(db, 'SELECT id, email, display_name, is_global_admin, contact_email, created_at FROM users WHERE id = ?', [id]);
+}
+
+async function getUserTeamRoles(userId) {
+  const db = await getDb();
+  return all(db, `
+    SELECT utr.*, t.name as team_name, t.slug, t.logo_url, t.age_group
+    FROM user_team_roles utr
+    JOIN teams t ON t.pg_org_id = utr.pg_org_id AND t.pg_team_id = utr.pg_team_id
+    WHERE utr.user_id = ?
+    ORDER BY t.name
+  `, [userId]);
+}
+
+async function getUserRoleForTeam(userId, orgId, teamId) {
+  const db = await getDb();
+  const row = get(db, 'SELECT role FROM user_team_roles WHERE user_id = ? AND pg_org_id = ? AND pg_team_id = ?', [userId, orgId, teamId]);
+  return row ? row.role : null;
+}
+
+async function setUserTeamRole(userId, orgId, teamId, role) {
+  const db = await getDb();
+  run(db, `
+    INSERT INTO user_team_roles (user_id, pg_org_id, pg_team_id, role)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(user_id, pg_org_id, pg_team_id) DO UPDATE SET role=excluded.role
+  `, [userId, orgId, teamId, role]);
+}
+
+async function removeUserTeamRole(userId, orgId, teamId) {
+  const db = await getDb();
+  run(db, 'DELETE FROM user_team_roles WHERE user_id = ? AND pg_org_id = ? AND pg_team_id = ?', [userId, orgId, teamId]);
+}
+
+async function getTeamMembers(orgId, teamId) {
+  const db = await getDb();
+  return all(db, `
+    SELECT u.id, u.email, u.display_name, utr.role, utr.created_at
+    FROM user_team_roles utr
+    JOIN users u ON u.id = utr.user_id
+    WHERE utr.pg_org_id = ? AND utr.pg_team_id = ?
+    ORDER BY utr.role, u.display_name
+  `, [orgId, teamId]);
+}
+
+async function getTeamFromGameId(gameId) {
+  const db = await getDb();
+  return get(db, 'SELECT team_org_id, team_id FROM games WHERE id = ?', [gameId]);
+}
+
 module.exports = {
   upsertTeam, getTeam, getTeamBySlug, getAllTeams, registerTeam, searchTeams,
   upsertPlayer, getPlayers,
@@ -479,4 +550,7 @@ module.exports = {
   getInningScores, upsertInningScore,
   getPlateAppearances, insertPlateAppearance, updatePlateAppearanceOutcome,
   logPitch, getLivePitchCounts, deleteLastPitch, getFullScorebookState,
+  // Auth
+  createUser, getUserByEmail, getUserById, getUserTeamRoles, getUserRoleForTeam,
+  setUserTeamRole, removeUserTeamRole, getTeamMembers, getTeamFromGameId,
 };

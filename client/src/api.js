@@ -1,7 +1,7 @@
 const API_BASE = '/api';
 
 async function fetchJson(url) {
-  const res = await fetch(`${API_BASE}${url}`);
+  const res = await fetch(`${API_BASE}${url}`, { credentials: 'include' });
   if (!res.ok) throw new Error(`API error: ${res.status}`);
   return res.json();
 }
@@ -59,7 +59,7 @@ export function getPitchRules(ageGroup) {
 }
 
 export function triggerScrape(slug) {
-  return fetch(`${API_BASE}/scrape/${slug}`, { method: 'POST' }).then(r => r.json());
+  return fetch(`${API_BASE}/scrape/${slug}`, { method: 'POST', credentials: 'include' }).then(r => r.json());
 }
 
 // Pitch count severity helper
@@ -70,14 +70,61 @@ export function pitchSeverity(pitches, dailyMax = 95) {
   return 'ok';
 }
 
-// ── Live Scorebook ────────────────────────────────────────────────────────────
+// ── Auth ──────────────────────────────────────────────────────────────────────
 
-async function mutate(method, url, body, pin) {
-  const headers = { 'Content-Type': 'application/json' };
-  if (pin) headers['x-scorekeeper-pin'] = pin;
+async function authFetch(method, url, body) {
   const res = await fetch(`${API_BASE}${url}`, {
     method,
-    headers,
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({ error: res.statusText }));
+  if (!res.ok) throw new Error(data.error || `API error: ${res.status}`);
+  return data;
+}
+
+export function authRegister(email, password, displayName) {
+  return authFetch('POST', '/auth/register', { email, password, displayName });
+}
+
+export function authLogin(email, password) {
+  return authFetch('POST', '/auth/login', { email, password });
+}
+
+export function authLogout() {
+  return authFetch('POST', '/auth/logout');
+}
+
+export function authMe() {
+  return fetchJson('/auth/me');
+}
+
+// ── Team Members ──────────────────────────────────────────────────────────────
+
+export function getTeamMembers(orgId, teamId) {
+  return fetchJson(`/teams/${orgId}/${teamId}/members`);
+}
+
+export function addTeamMember(orgId, teamId, email, role) {
+  return authFetch('POST', `/teams/${orgId}/${teamId}/members`, { email, role });
+}
+
+export function updateTeamMember(orgId, teamId, userId, role) {
+  return authFetch('PUT', `/teams/${orgId}/${teamId}/members/${userId}`, { role });
+}
+
+export function removeTeamMember(orgId, teamId, userId) {
+  return authFetch('DELETE', `/teams/${orgId}/${teamId}/members/${userId}`);
+}
+
+// ── Live Scorebook ────────────────────────────────────────────────────────────
+
+async function mutate(method, url, body) {
+  const res = await fetch(`${API_BASE}${url}`, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
     body: body !== null ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) {
@@ -87,7 +134,7 @@ async function mutate(method, url, body, pin) {
   return res.json();
 }
 
-// Viewer (no PIN)
+// Viewer (no auth)
 export function getScorebookState(gameId) {
   return fetchJson(`/games/${gameId}/scorebook`).catch(() => null);
 }
@@ -96,47 +143,53 @@ export function getLivePitchCounts(gameId) {
   return fetchJson(`/games/${gameId}/live-pitch-counts`);
 }
 
-// Scorekeeper (PIN required)
-export function initScorebookGame(gameId, body, pin) {
-  return mutate('POST', `/games/${gameId}/scorebook/init`, body, pin);
+// Scorekeeper (auth required)
+export function initScorebookGame(gameId, body) {
+  return mutate('POST', `/games/${gameId}/scorebook/init`, body);
 }
 
-export function saveLineup(gameId, body, pin) {
-  return mutate('PUT', `/games/${gameId}/scorebook/lineup`, body, pin);
+export function saveLineup(gameId, body) {
+  return mutate('PUT', `/games/${gameId}/scorebook/lineup`, body);
 }
 
-export function startScorebookGame(gameId, pin) {
-  return mutate('POST', `/games/${gameId}/scorebook/start`, {}, pin);
+export function startScorebookGame(gameId) {
+  return mutate('POST', `/games/${gameId}/scorebook/start`, {});
 }
 
-export function updateScorebookState(gameId, body, pin) {
-  return mutate('PUT', `/games/${gameId}/scorebook/state`, body, pin);
+export function updateScorebookState(gameId, body) {
+  return mutate('PUT', `/games/${gameId}/scorebook/state`, body);
 }
 
-export function updateInningScore(gameId, inning, half, body, pin) {
-  return mutate('PUT', `/games/${gameId}/scorebook/inning/${inning}/${half}`, body, pin);
+export function updateInningScore(gameId, inning, half, body) {
+  return mutate('PUT', `/games/${gameId}/scorebook/inning/${inning}/${half}`, body);
 }
 
-export function startPlateAppearance(gameId, body, pin) {
-  return mutate('POST', `/games/${gameId}/scorebook/plate-appearance`, body, pin);
+export function startPlateAppearance(gameId, body) {
+  return mutate('POST', `/games/${gameId}/scorebook/plate-appearance`, body);
 }
 
-export function recordPlateAppearanceOutcome(gameId, paId, body, pin) {
-  return mutate('PUT', `/games/${gameId}/scorebook/plate-appearance/${paId}`, body, pin);
+export function recordPlateAppearanceOutcome(gameId, paId, body) {
+  return mutate('PUT', `/games/${gameId}/scorebook/plate-appearance/${paId}`, body);
 }
 
-export function logPitch(gameId, body, pin) {
-  return mutate('POST', `/games/${gameId}/scorebook/pitch`, body, pin);
+export function logPitch(gameId, body) {
+  return mutate('POST', `/games/${gameId}/scorebook/pitch`, body);
 }
 
-export function undoLastPitch(gameId, pin) {
-  return mutate('DELETE', `/games/${gameId}/scorebook/pitch/last`, null, pin);
+export function undoLastPitch(gameId) {
+  return mutate('DELETE', `/games/${gameId}/scorebook/pitch/last`, null);
 }
 
-export function recordSubstitution(gameId, body, pin) {
-  return mutate('POST', `/games/${gameId}/scorebook/substitution`, body, pin);
+export function recordSubstitution(gameId, body) {
+  return mutate('POST', `/games/${gameId}/scorebook/substitution`, body);
 }
 
-export function endScorebookGame(gameId, body, pin) {
-  return mutate('POST', `/games/${gameId}/scorebook/end`, body, pin);
+export function endScorebookGame(gameId, body) {
+  return mutate('POST', `/games/${gameId}/scorebook/end`, body);
+}
+
+// ── Register team (auth required) ─────────────────────────────────────────────
+
+export function registerTeam(body) {
+  return authFetch('POST', '/teams', body);
 }

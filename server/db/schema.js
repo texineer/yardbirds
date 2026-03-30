@@ -230,6 +230,43 @@ function initSchema() {
   db.run('CREATE INDEX IF NOT EXISTS idx_pa_game ON plate_appearances(game_id, pa_order)');
   db.run('CREATE INDEX IF NOT EXISTS idx_live_pitches_game ON live_pitches(game_id, pitcher_name)');
   db.run('CREATE INDEX IF NOT EXISTS idx_inning_scores_game ON inning_scores(game_id)');
+
+  // Auth tables
+  db.run(`
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      display_name TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS user_team_roles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      pg_org_id INTEGER NOT NULL,
+      pg_team_id INTEGER NOT NULL,
+      role TEXT NOT NULL CHECK(role IN ('admin', 'scorekeeper', 'viewer')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(user_id, pg_org_id, pg_team_id),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS sessions (
+      sid TEXT PRIMARY KEY,
+      sess TEXT NOT NULL,
+      expired_at INTEGER NOT NULL
+    )
+  `);
+  db.run('CREATE INDEX IF NOT EXISTS idx_sessions_expired ON sessions(expired_at)');
+
+  // Migration: add global admin and contact email fields to users
+  try { db.run("ALTER TABLE users ADD COLUMN is_global_admin INTEGER NOT NULL DEFAULT 0"); } catch(e) {}
+  try { db.run("ALTER TABLE users ADD COLUMN contact_email TEXT"); } catch(e) {}
 }
 
 function saveDb() {
@@ -249,4 +286,23 @@ function closeDb() {
   }
 }
 
-module.exports = { getDb, saveDb, closeDb };
+async function seedGlobalAdmin() {
+  const bcrypt = require('bcryptjs');
+  const email = 'ray@bleacherbox.app';
+  const existing = db.exec(`SELECT id FROM users WHERE email = '${email}'`);
+  if (existing.length > 0 && existing[0].values.length > 0) {
+    // Ensure flag is set
+    db.run(`UPDATE users SET is_global_admin = 1, contact_email = 'ray@texineer.com' WHERE email = ?`, [email]);
+    saveDb();
+    return;
+  }
+  const hash = await bcrypt.hash('poiuytrewq', 10);
+  db.run(
+    `INSERT INTO users (email, password_hash, display_name, is_global_admin, contact_email) VALUES (?, ?, ?, 1, ?)`,
+    [email, hash, 'Ray', 'ray@texineer.com']
+  );
+  saveDb();
+  console.log('[db] Global admin seeded: ray@bleacherbox.app');
+}
+
+module.exports = { getDb, saveDb, closeDb, seedGlobalAdmin };

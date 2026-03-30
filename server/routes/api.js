@@ -3,6 +3,7 @@ const router = express.Router();
 const queries = require('../db/queries');
 const { scrapeAll } = require('../scrapers/run');
 const { scrapeTournamentSchedule } = require('../scrapers/tournament');
+const { requireAuth, requireTeamRole } = require('../middleware/auth');
 
 // GET /api/teams - list all registered teams
 router.get('/teams', async (req, res) => {
@@ -27,12 +28,14 @@ router.get('/teams/by-slug/:slug', async (req, res) => {
   }
 });
 
-// POST /api/teams - register a new team
-router.post('/teams', async (req, res) => {
+// POST /api/teams - register a new team (requires auth, creator becomes admin)
+router.post('/teams', requireAuth, async (req, res) => {
   try {
     const { slug, pgOrgId, pgTeamId, name, ageGroup, ftTeamUuid, ftSeasons, logoUrl } = req.body;
     if (!slug || !pgOrgId || !pgTeamId) return res.status(400).json({ error: 'slug, pgOrgId, pgTeamId required' });
     await queries.registerTeam({ slug, pgOrgId, pgTeamId, name: name || '', ageGroup: ageGroup || '', ftTeamUuid, ftSeasons, logoUrl });
+    // Auto-assign admin role to creator
+    await queries.setUserTeamRole(req.user.id, parseInt(pgOrgId), parseInt(pgTeamId), 'admin');
     res.json({ status: 'ok', slug });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -235,13 +238,7 @@ router.get('/tournaments/:eventId/pitching-report', async (req, res) => {
 
 // ── Live Scorebook ────────────────────────────────────────────────────────────
 
-function requirePin(req, res, next) {
-  const pin = process.env.SCOREKEEPER_PIN;
-  if (!pin) return res.status(503).json({ error: 'Scoring not enabled (SCOREKEEPER_PIN not set)' });
-  const provided = req.headers['x-scorekeeper-pin'] || req.body?.pin;
-  if (provided !== pin) return res.status(401).json({ error: 'Invalid PIN' });
-  next();
-}
+const requireScorekeeper = requireTeamRole(['admin', 'scorekeeper']);
 
 // GET /api/games/:gameId/scorebook
 router.get('/games/:gameId/scorebook', async (req, res) => {
@@ -265,7 +262,7 @@ router.get('/games/:gameId/live-pitch-counts', async (req, res) => {
 });
 
 // POST /api/games/:gameId/scorebook/init
-router.post('/games/:gameId/scorebook/init', requirePin, async (req, res) => {
+router.post('/games/:gameId/scorebook/init', requireScorekeeper, async (req, res) => {
   try {
     const gameId = parseInt(req.params.gameId);
     const { homeTeamName, awayTeamName, ourSide } = req.body;
@@ -278,7 +275,7 @@ router.post('/games/:gameId/scorebook/init', requirePin, async (req, res) => {
 });
 
 // POST /api/games/:gameId/scorebook/start
-router.post('/games/:gameId/scorebook/start', requirePin, async (req, res) => {
+router.post('/games/:gameId/scorebook/start', requireScorekeeper, async (req, res) => {
   try {
     const gameId = parseInt(req.params.gameId);
     await queries.startGame(gameId);
@@ -290,7 +287,7 @@ router.post('/games/:gameId/scorebook/start', requirePin, async (req, res) => {
 });
 
 // PUT /api/games/:gameId/scorebook/state
-router.put('/games/:gameId/scorebook/state', requirePin, async (req, res) => {
+router.put('/games/:gameId/scorebook/state', requireScorekeeper, async (req, res) => {
   try {
     const gameId = parseInt(req.params.gameId);
     const { inning, half, outs, balls, strikes, runner1b, runner2b, runner3b, status } = req.body;
@@ -303,7 +300,7 @@ router.put('/games/:gameId/scorebook/state', requirePin, async (req, res) => {
 });
 
 // PUT /api/games/:gameId/scorebook/lineup
-router.put('/games/:gameId/scorebook/lineup', requirePin, async (req, res) => {
+router.put('/games/:gameId/scorebook/lineup', requireScorekeeper, async (req, res) => {
   try {
     const gameId = parseInt(req.params.gameId);
     const { teamSide, entries } = req.body;
@@ -320,7 +317,7 @@ router.put('/games/:gameId/scorebook/lineup', requirePin, async (req, res) => {
 });
 
 // PUT /api/games/:gameId/scorebook/inning/:inning/:half
-router.put('/games/:gameId/scorebook/inning/:inning/:half', requirePin, async (req, res) => {
+router.put('/games/:gameId/scorebook/inning/:inning/:half', requireScorekeeper, async (req, res) => {
   try {
     const gameId = parseInt(req.params.gameId);
     const inning = parseInt(req.params.inning);
@@ -334,7 +331,7 @@ router.put('/games/:gameId/scorebook/inning/:inning/:half', requirePin, async (r
 });
 
 // POST /api/games/:gameId/scorebook/plate-appearance
-router.post('/games/:gameId/scorebook/plate-appearance', requirePin, async (req, res) => {
+router.post('/games/:gameId/scorebook/plate-appearance', requireScorekeeper, async (req, res) => {
   try {
     const gameId = parseInt(req.params.gameId);
     const { inning, half, battingOrderPos, teamSide, playerName, pitcherName } = req.body;
@@ -346,7 +343,7 @@ router.post('/games/:gameId/scorebook/plate-appearance', requirePin, async (req,
 });
 
 // PUT /api/games/:gameId/scorebook/plate-appearance/:paId
-router.put('/games/:gameId/scorebook/plate-appearance/:paId', requirePin, async (req, res) => {
+router.put('/games/:gameId/scorebook/plate-appearance/:paId', requireScorekeeper, async (req, res) => {
   try {
     const paId = parseInt(req.params.paId);
     const { outcome, rbi, pitchSequence } = req.body;
@@ -358,7 +355,7 @@ router.put('/games/:gameId/scorebook/plate-appearance/:paId', requirePin, async 
 });
 
 // POST /api/games/:gameId/scorebook/pitch
-router.post('/games/:gameId/scorebook/pitch', requirePin, async (req, res) => {
+router.post('/games/:gameId/scorebook/pitch', requireScorekeeper, async (req, res) => {
   try {
     const gameId = parseInt(req.params.gameId);
     const { paId, pitcherName, pitcherTeamSide, pitchType, inning, half } = req.body;
@@ -371,7 +368,7 @@ router.post('/games/:gameId/scorebook/pitch', requirePin, async (req, res) => {
 });
 
 // DELETE /api/games/:gameId/scorebook/pitch/last
-router.delete('/games/:gameId/scorebook/pitch/last', requirePin, async (req, res) => {
+router.delete('/games/:gameId/scorebook/pitch/last', requireScorekeeper, async (req, res) => {
   try {
     const gameId = parseInt(req.params.gameId);
     await queries.deleteLastPitch(gameId);
@@ -383,7 +380,7 @@ router.delete('/games/:gameId/scorebook/pitch/last', requirePin, async (req, res
 });
 
 // POST /api/games/:gameId/scorebook/substitution
-router.post('/games/:gameId/scorebook/substitution', requirePin, async (req, res) => {
+router.post('/games/:gameId/scorebook/substitution', requireScorekeeper, async (req, res) => {
   try {
     const gameId = parseInt(req.params.gameId);
     const { teamSide, battingOrder, newPlayerName, jerseyNumber, position } = req.body;
@@ -395,7 +392,7 @@ router.post('/games/:gameId/scorebook/substitution', requirePin, async (req, res
 });
 
 // POST /api/games/:gameId/scorebook/end
-router.post('/games/:gameId/scorebook/end', requirePin, async (req, res) => {
+router.post('/games/:gameId/scorebook/end', requireScorekeeper, async (req, res) => {
   try {
     const gameId = parseInt(req.params.gameId);
     const sbState = await queries.getScorebookState(gameId);
@@ -407,6 +404,57 @@ router.post('/games/:gameId/scorebook/end', requirePin, async (req, res) => {
     await queries.endGame(gameId, scoreUs, scoreThem);
     const game = await queries.getGame(gameId);
     res.json(game);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Team Member Management ───────────────────────────────────────────────────
+
+const requireAdmin = requireTeamRole(['admin']);
+
+// GET /api/teams/:orgId/:teamId/members
+router.get('/teams/:orgId/:teamId/members', requireAdmin, async (req, res) => {
+  try {
+    const members = await queries.getTeamMembers(parseInt(req.params.orgId), parseInt(req.params.teamId));
+    res.json(members);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/teams/:orgId/:teamId/members - add member by email
+router.post('/teams/:orgId/:teamId/members', requireAdmin, async (req, res) => {
+  try {
+    const { email, role } = req.body;
+    if (!email || !role) return res.status(400).json({ error: 'email and role required' });
+    if (!['admin', 'scorekeeper', 'viewer'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
+    const user = await queries.getUserByEmail(email.toLowerCase());
+    if (!user) return res.status(404).json({ error: 'No user found with that email' });
+    await queries.setUserTeamRole(user.id, parseInt(req.params.orgId), parseInt(req.params.teamId), role);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/teams/:orgId/:teamId/members/:userId - update role
+router.put('/teams/:orgId/:teamId/members/:userId', requireAdmin, async (req, res) => {
+  try {
+    const { role } = req.body;
+    if (!role || !['admin', 'scorekeeper', 'viewer'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
+    await queries.setUserTeamRole(parseInt(req.params.userId), parseInt(req.params.orgId), parseInt(req.params.teamId), role);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/teams/:orgId/:teamId/members/:userId - remove member
+router.delete('/teams/:orgId/:teamId/members/:userId', requireAdmin, async (req, res) => {
+  try {
+    await queries.removeUserTeamRole(parseInt(req.params.userId), parseInt(req.params.orgId), parseInt(req.params.teamId));
+    res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -1,129 +1,18 @@
 import { useState, useEffect, useRef } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, Link } from 'react-router-dom'
 import { getGame, getTeamBySlug, initScorebookGame, saveLineup, startScorebookGame } from '../api'
+import { useAuth } from '../context/AuthContext'
 import LoadingSpinner from '../components/LoadingSpinner'
 
 const POSITIONS = ['P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH', 'EH']
 
-function PinModal({ onSuccess }) {
-  const [digits, setDigits] = useState(['', '', '', ''])
-  const [error, setError] = useState('')
-  const [shake, setShake] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const inputRefs = [useRef(), useRef(), useRef(), useRef()]
-
-  const filled = digits.filter(Boolean).length
-
-  function pressDigit(d) {
-    const idx = digits.findIndex(v => !v)
-    if (idx === -1) return
-    const next = [...digits]
-    next[idx] = d
-    setDigits(next)
-    if (idx < 3) inputRefs[idx + 1]?.current?.focus()
-    if (idx === 3) {
-      // auto-submit when last digit filled
-      submitPin([...digits.slice(0, 3), d])
-    }
-  }
-
-  function backspace() {
-    const idx = [...digits].reverse().findIndex(v => v)
-    if (idx === -1) return
-    const realIdx = 3 - idx
-    const next = [...digits]
-    next[realIdx] = ''
-    setDigits(next)
-  }
-
-  async function submitPin(pin = digits) {
-    const pinStr = pin.join('')
-    if (pinStr.length < 4) return
-    setLoading(true)
-    setError('')
-    try {
-      await onSuccess(pinStr)
-    } catch (e) {
-      setError(e.message || 'Invalid PIN')
-      setShake(true)
-      setDigits(['', '', '', ''])
-      setTimeout(() => setShake(false), 500)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center p-4"
-      style={{ background: 'rgba(43,62,80,0.75)', backdropFilter: 'blur(6px)' }}>
-      <div className={`card w-full max-w-sm p-6 rounded-2xl ${shake ? 'animate-shake' : ''}`}
-        style={{ animationDuration: '0.4s' }}>
-        <div className="text-center mb-6">
-          <div className="font-display text-2xl mb-1" style={{ color: 'var(--navy)' }}>SCOREKEEPER ACCESS</div>
-          <div className="text-sm" style={{ color: 'var(--navy-muted)' }}>Enter your PIN to score this game</div>
-        </div>
-
-        {/* Digit display */}
-        <div className="flex justify-center gap-3 mb-6">
-          {digits.map((d, i) => (
-            <div key={i} className="w-14 h-16 rounded-xl flex items-center justify-center font-display text-3xl transition-all"
-              style={{
-                border: `2px solid ${d ? 'var(--gold)' : 'var(--border)'}`,
-                background: d ? 'var(--sky)' : 'var(--cream)',
-                color: 'var(--navy)',
-              }}>
-              {d ? '●' : ''}
-            </div>
-          ))}
-        </div>
-
-        {error && (
-          <div className="text-center mb-4 text-sm font-semibold" style={{ color: 'var(--loss)' }}>{error}</div>
-        )}
-
-        {/* Numpad */}
-        <div className="grid grid-cols-3 gap-2">
-          {['1','2','3','4','5','6','7','8','9'].map(d => (
-            <button key={d}
-              className="h-14 rounded-xl font-display text-2xl active:scale-95 transition-transform select-none"
-              style={{ background: 'var(--sky)', color: 'var(--navy)' }}
-              onClick={() => pressDigit(d)}>
-              {d}
-            </button>
-          ))}
-          <div />
-          <button className="h-14 rounded-xl font-display text-2xl active:scale-95 transition-transform select-none"
-            style={{ background: 'var(--sky)', color: 'var(--navy)' }}
-            onClick={() => pressDigit('0')}>0</button>
-          <button className="h-14 rounded-xl font-display text-2xl active:scale-95 transition-transform select-none"
-            style={{ background: 'var(--sky)', color: 'var(--loss)' }}
-            onClick={backspace}>⌫</button>
-        </div>
-
-        {loading && (
-          <div className="mt-4 text-center text-sm" style={{ color: 'var(--navy-muted)' }}>Verifying...</div>
-        )}
-
-        {filled === 4 && !loading && (
-          <button className="mt-4 w-full h-14 rounded-xl font-display text-xl tracking-widest text-white active:scale-95 transition-transform"
-            style={{ background: 'var(--navy)' }}
-            onClick={() => submitPin()}>
-            CONTINUE
-          </button>
-        )}
-      </div>
-    </div>
-  )
-}
-
 export default function LineupSetup() {
   const { gameId, slug } = useParams()
   const navigate = useNavigate()
+  const { user, hasTeamRole, loading: authLoading } = useAuth()
   const [game, setGame] = useState(null)
   const [team, setTeam] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [pin, setPin] = useState(() => sessionStorage.getItem('scorekeeper_pin') || '')
-  const [showPin, setShowPin] = useState(false)
   const [activeTab, setActiveTab] = useState('home')
   const [ourSide, setOurSide] = useState('home')
   const [saving, setSaving] = useState(false)
@@ -149,20 +38,35 @@ export default function LineupSetup() {
     })
   }, [gameId, slug])
 
-  // Show PIN modal if no pin stored
-  useEffect(() => {
-    if (!loading && !pin) setShowPin(true)
-  }, [loading, pin])
+  const canScore = !authLoading && user && team && hasTeamRole(team.pg_org_id, team.pg_team_id, ['admin', 'scorekeeper'])
 
-  async function handlePinSuccess(enteredPin) {
-    // Validate by calling init (server checks PIN)
-    const opponentName = game?.opponent_name || 'Opponent'
-    const homeTeamName = ourSide === 'home' ? (team?.name || 'Home') : opponentName
-    const awayTeamName = ourSide === 'away' ? (team?.name || 'Away') : opponentName
-    await initScorebookGame(parseInt(gameId), { homeTeamName, awayTeamName, ourSide }, enteredPin)
-    sessionStorage.setItem('scorekeeper_pin', enteredPin)
-    setPin(enteredPin)
-    setShowPin(false)
+  if (loading || authLoading) return <LoadingSpinner />
+
+  // Auth gate
+  if (!user) {
+    return (
+      <div className="text-center py-12">
+        <div className="font-display text-2xl mb-2" style={{ color: 'var(--navy)' }}>SIGN IN REQUIRED</div>
+        <p className="text-sm mb-4" style={{ color: 'var(--navy-muted)' }}>
+          You need to be signed in as a scorekeeper to score this game.
+        </p>
+        <Link to="/login" className="inline-block font-display text-lg tracking-wider px-6 py-3 rounded-xl text-white no-underline"
+          style={{ background: 'var(--navy)' }}>
+          SIGN IN
+        </Link>
+      </div>
+    )
+  }
+
+  if (!canScore) {
+    return (
+      <div className="text-center py-12">
+        <div className="font-display text-2xl mb-2" style={{ color: 'var(--navy)' }}>ACCESS DENIED</div>
+        <p className="text-sm" style={{ color: 'var(--navy-muted)' }}>
+          You need scorekeeper or admin access to score this game. Contact the team admin.
+        </p>
+      </div>
+    )
   }
 
   function updateEntry(side, idx, field, value) {
@@ -174,14 +78,6 @@ export default function LineupSetup() {
     })
   }
 
-  function handleNameFocus(side, idx) {
-    if (side !== (ourSide === 'home' ? 'home' : 'away')) return
-    // Show roster suggestions for our team's side
-    const players = team?.players || []
-    setRosterSuggestions(players)
-    setSuggestingIdx(`${side}-${idx}`)
-  }
-
   function pickSuggestion(side, idx, player) {
     updateEntry(side, idx, 'playerName', player.name)
     updateEntry(side, idx, 'jerseyNumber', player.number || '')
@@ -190,32 +86,24 @@ export default function LineupSetup() {
   }
 
   async function handleSaveAndStart() {
-    if (!pin) { setShowPin(true); return }
     setSaving(true)
     try {
       const opponentName = game?.opponent_name || 'Opponent'
       const homeTeamName = ourSide === 'home' ? (team?.name || 'Home') : opponentName
       const awayTeamName = ourSide === 'away' ? (team?.name || 'Away') : opponentName
 
-      // Re-init in case ourSide changed
-      await initScorebookGame(parseInt(gameId), { homeTeamName, awayTeamName, ourSide }, pin)
+      await initScorebookGame(parseInt(gameId), { homeTeamName, awayTeamName, ourSide })
 
       // Save both lineups
       const homeEntries = homeLineup.map((e, i) => ({ battingOrder: i + 1, ...e }))
       const awayEntries = awayLineup.map((e, i) => ({ battingOrder: i + 1, ...e }))
-      await saveLineup(parseInt(gameId), { teamSide: 'home', entries: homeEntries }, pin)
-      await saveLineup(parseInt(gameId), { teamSide: 'away', entries: awayEntries }, pin)
-      await startScorebookGame(parseInt(gameId), pin)
+      await saveLineup(parseInt(gameId), { teamSide: 'home', entries: homeEntries })
+      await saveLineup(parseInt(gameId), { teamSide: 'away', entries: awayEntries })
+      await startScorebookGame(parseInt(gameId))
 
       navigate(`../game/${gameId}/score`, { relative: 'path' })
     } catch (e) {
-      if (e.message?.includes('PIN') || e.message?.includes('401')) {
-        sessionStorage.removeItem('scorekeeper_pin')
-        setPin('')
-        setShowPin(true)
-      } else {
-        alert(e.message)
-      }
+      alert(e.message)
     } finally {
       setSaving(false)
     }
@@ -228,12 +116,8 @@ export default function LineupSetup() {
 
   const hasEnough = ourLineup.some(e => e.playerName) && themLineup.some(e => e.playerName)
 
-  if (loading) return <LoadingSpinner />
-
   return (
     <div className="space-y-4 pb-8" onClick={() => setSuggestingIdx(null)}>
-      {showPin && <PinModal onSuccess={handlePinSuccess} />}
-
       {/* Header */}
       <div>
         <div className="font-display text-2xl" style={{ color: 'var(--navy)' }}>LINEUP SETUP</div>

@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import {
   getScorebookState, updateScorebookState,
   logPitch, undoLastPitch, startPlateAppearance, recordPlateAppearanceOutcome,
   updateInningScore, endScorebookGame, recordSubstitution,
 } from '../api'
+import { useAuth } from '../context/AuthContext'
 import BasesDiamond from '../components/BasesDiamond'
 import LoadingSpinner from '../components/LoadingSpinner'
 
@@ -138,7 +139,7 @@ function EndGameConfirm({ onConfirm, onCancel }) {
 export default function Scorebook() {
   const { gameId, slug } = useParams()
   const navigate = useNavigate()
-  const pin = sessionStorage.getItem('scorekeeper_pin')
+  const { user, loading: authLoading } = useAuth()
 
   const [state, setState] = useState(null)
   const [homeLineup, setHomeLineup] = useState([])
@@ -159,10 +160,10 @@ export default function Scorebook() {
 
   const [subState, setSubState] = useState(null) // { side, idx } or null
 
-  // Redirect if no PIN
+  // Redirect if not authenticated
   useEffect(() => {
-    if (!pin) navigate(`/${slug}/game/${gameId}/lineup`)
-  }, [pin, slug, gameId, navigate])
+    if (!authLoading && !user) navigate(`/${slug}/game/${gameId}/lineup`)
+  }, [user, authLoading, slug, gameId, navigate])
 
   useEffect(() => {
     async function load() {
@@ -190,7 +191,7 @@ export default function Scorebook() {
   async function syncState(patch) {
     setState(s => ({ ...s, ...patch }))
     try {
-      await updateScorebookState(parseInt(gameId), patch, pin)
+      await updateScorebookState(parseInt(gameId), patch)
     } catch {
       showToast('Sync error — check connection')
     }
@@ -226,7 +227,7 @@ export default function Scorebook() {
       pitchType: type,
       inning: state.inning,
       half: state.half,
-    }, pin).catch(() => showToast('Sync error'))
+    }).catch(() => showToast('Sync error'))
   }
 
   async function handleUndo() {
@@ -243,7 +244,7 @@ export default function Scorebook() {
     setState(s => ({ ...s, balls, strikes }))
 
     try {
-      await undoLastPitch(parseInt(gameId), pin)
+      await undoLastPitch(parseInt(gameId))
       showToast('Last pitch undone')
     } catch {
       showToast('Sync error')
@@ -259,7 +260,7 @@ export default function Scorebook() {
         outcome: code,
         rbi: 0,
         pitchSequence: pitchLog.join(','),
-      }, pin).catch(() => {})
+      }).catch(() => {})
     }
 
     const isOut = ['K', 'Kl', 'GO', 'FO', 'LO', 'DP'].includes(code)
@@ -295,7 +296,7 @@ export default function Scorebook() {
         teamSide: currentBatterSide,
         playerName: batter?.player_name || 'Unknown',
         pitcherName: pitcher?.player_name || 'Unknown',
-      }, pin)
+      })
       setCurrentPaId(result.paId)
     } catch {
       showToast('Sync error starting PA')
@@ -303,7 +304,7 @@ export default function Scorebook() {
   }
 
   async function handleRHEConfirm(runs, hits, errors) {
-    await updateInningScore(parseInt(gameId), state.inning, state.half, { runs, hits, errors }, pin).catch(() => {})
+    await updateInningScore(parseInt(gameId), state.inning, state.half, { runs, hits, errors }).catch(() => {})
 
     // Advance to next half/inning
     let newInning = state.inning
@@ -324,7 +325,7 @@ export default function Scorebook() {
   async function handleEndGame() {
     // Server computes final score from stored inning_scores
     try {
-      await endScorebookGame(parseInt(gameId), {}, pin)
+      await endScorebookGame(parseInt(gameId), {})
       navigate(`/${slug}/game/${gameId}`)
     } catch (e) {
       showToast(e.message || 'Error ending game')
@@ -552,7 +553,7 @@ export default function Scorebook() {
                         newPlayerName: name,
                         jerseyNumber: number,
                         position: pos,
-                      }, pin).catch(() => showToast('Sync error'))
+                      }).catch(() => showToast('Sync error'))
                       // Refresh lineups
                       const data = await getScorebookState(gameId)
                       if (data) {

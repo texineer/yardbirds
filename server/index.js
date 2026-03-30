@@ -1,20 +1,38 @@
 const express = require('express');
 const cors = require('cors');
+const session = require('express-session');
 const path = require('path');
 const cron = require('node-cron');
 const apiRoutes = require('./routes/api');
+const authRoutes = require('./routes/auth');
 const { scrapeAllTeams } = require('./scrapers/run');
-const { getDb, closeDb } = require('./db/schema');
+const { getDb, closeDb, seedGlobalAdmin } = require('./db/schema');
 const { getAllTeams } = require('./db/queries');
+const SqliteSessionStore = require('./db/sessionStore');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Middleware
-app.use(cors());
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 
+// Session
+app.use(session({
+  store: new SqliteSessionStore(),
+  secret: process.env.SESSION_SECRET || 'bleacherbox-dev-secret',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+  },
+}));
+
 // API routes
+app.use('/api/auth', authRoutes);
 app.use('/api', apiRoutes);
 
 // Serve static frontend (production)
@@ -31,6 +49,7 @@ app.get('*', (req, res) => {
 // Initialize DB and start server
 async function start() {
   await getDb();
+  await seedGlobalAdmin();
   console.log('[db] Database initialized');
 
   app.listen(PORT, () => {
