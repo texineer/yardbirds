@@ -7,7 +7,6 @@ import {
 } from '../api'
 import { useAuth } from '../context/AuthContext'
 import GameDiamond from '../components/GameDiamond'
-import FieldDiagram from '../components/FieldDiagram'
 import LoadingSpinner from '../components/LoadingSpinner'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -421,7 +420,7 @@ export default function Scorebook() {
       {/* ── DIAMOND ── */}
       <div style={{ background: '#2d5a27' }} className="py-2">
         <GameDiamond
-          runners={{
+          runners={showRunners ? pendingRunners : {
             first: state.runner_1b,
             second: state.runner_2b,
             third: state.runner_3b,
@@ -435,6 +434,9 @@ export default function Scorebook() {
               [base]: prev[base] ? null : 'Runner',
             }))
           } : undefined}
+          dragMode={showInPlay && ipStep === 1}
+          onBallDrop={(x, y) => { setIpHitLoc({ x, y }); setIpStep(2) }}
+          hitMark={ipHitLoc}
           size={320}
         />
       </div>
@@ -539,18 +541,12 @@ export default function Scorebook() {
             </>
           )}
 
-          {/* Step 1: Field Tap */}
+          {/* Step 1: Drag ball on diamond (handled by GameDiamond dragMode above) */}
           {ipStep === 1 && (
-            <>
-              <div className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--navy-muted)' }}>TAP WHERE BALL WAS FIELDED</div>
-              <div className="flex justify-center">
-                <FieldDiagram
-                  onTap={(x, y) => { setIpHitLoc({ x, y }); setIpStep(2) }}
-                  hitMark={ipHitLoc}
-                  size={220}
-                />
-              </div>
-            </>
+            <div className="text-center py-4">
+              <div className="font-display text-base mb-1" style={{ color: 'var(--navy)' }}>DRAG THE ⚾ ON THE DIAMOND</div>
+              <div className="text-xs" style={{ color: 'var(--navy-muted)' }}>Drag the ball to where it was hit or fielded</div>
+            </div>
           )}
 
           {/* Step 2: Fielder */}
