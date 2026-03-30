@@ -15,35 +15,62 @@ const { getBrowser } = require('../server/scrapers/browser');
     if (ct.includes('json') && u.includes('fivetool') && !u.includes('getcart')) {
       try {
         const j = await response.json();
-        console.log('AJAX:', u.slice(0, 150));
-        console.log('  Sample:', JSON.stringify(j).slice(0, 500));
+        console.log('AJAX:', u);
+        console.log('  Keys:', Object.keys(j));
+        const s = JSON.stringify(j);
+        console.log('  Length:', s.length, 'Sample:', s.slice(0, 600));
       } catch (e) {}
     }
   });
 
-  // Try direct URL pattern for 14U division teams
-  const url = 'https://play.fivetoolyouth.org/events/five-tool-youth-super-nit-fivetool-youth-park-04-18-2026/teams/14U';
+  // Go to the teams page
+  const url = 'https://play.fivetoolyouth.org/events/five-tool-youth-super-nit-fivetool-youth-park-04-18-2026/teams';
   console.log('Loading:', url);
   await page.goto(url, { waitUntil: 'load', timeout: 45000 });
+  await page.waitForTimeout(6000);
+
+  // Find all links and their hrefs to understand the division buttons
+  const links = await page.evaluate(() => {
+    return [...document.querySelectorAll('a')].map(a => ({
+      text: a.textContent.trim(),
+      href: a.href,
+      visible: a.offsetParent !== null,
+    })).filter(a => a.text && (a.text.includes('U') || a.text.includes('14')));
+  });
+  console.log('\nDivision-like links:');
+  links.forEach(l => console.log(' ', l.text, '->', l.href, l.visible ? '' : '(hidden)'));
+
+  // Try clicking the 14U link by href pattern
+  const clicked14u = await page.evaluate(() => {
+    const allAs = document.querySelectorAll('a');
+    for (const a of allAs) {
+      if (a.textContent.trim() === '14U' || a.href.includes('/14U') || a.href.includes('/14u')) {
+        console.log('Clicking:', a.href);
+        a.click();
+        return a.href;
+      }
+    }
+    // Try buttons too
+    const btns = document.querySelectorAll('button, [role="button"], .division-btn, [class*=division]');
+    for (const b of btns) {
+      if (b.textContent.trim() === '14U') {
+        b.click();
+        return 'button:14U';
+      }
+    }
+    return null;
+  });
+  console.log('\nClicked:', clicked14u);
   await page.waitForTimeout(8000);
 
-  // Get page content
+  // Get page text after click
   const text = await page.evaluate(() => document.body.innerText);
   const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 2 && l.length < 100);
-  const navSkip = ['CART','LOGIN','TOURNAMENTS','RANKINGS','PAST RESULTS','MEMBERSHIP','BUY','TRYOUTS','RULES','CALCULATOR','ABOUT','CONTACT','FIVE TOOL','WEATHER','ALL EVENTS','INFO','TEAMS','VENUES','SCHEDULE','REGISTRATION','DIVISION','Search','State','Waiver','Powered','©','There are','items','Pool','Pay umps','each team'];
-  const filtered = lines.filter(l => !navSkip.some(n => l.toUpperCase().includes(n.toUpperCase())));
+  const navSkip = ['CART','There are no','LOGIN','TOURNAMENTS','BASEBALL RANK','SOFTBALL RANK','PAST RESULTS','BASEBALL MEM','SOFTBALL MEM','BUY TEAM','TEAM TRYOUTS','TOURNAMENT RULES','AGE CALC','ABOUT','CONTACT','FIVE TOOL','Weather','ALL EVENTS','INFO','VENUES','SCHEDULE','RULES','REGISTRATION','DIVISION','Waiver','Powered','©','COST','DESCRIPTION','IF YOUR','Umpire','RAMON','PRICE','CHECKLIST','LOCATION','Director','TEAMS'];
+  const filtered = lines.filter(l => !navSkip.some(n => l.toUpperCase().startsWith(n.toUpperCase())));
 
-  console.log('\n=== TEAM NAMES ===');
+  console.log('\n=== CONTENT AFTER 14U CLICK ===');
   filtered.forEach(l => console.log(' ', l));
-
-  // Also get all href links on the page
-  const hrefs = await page.evaluate(() => {
-    return [...document.querySelectorAll('a')].map(a => ({ href: a.href, text: a.textContent.trim() }))
-      .filter(a => a.href.includes('fivetool') && a.text.length > 2 && a.text.length < 80);
-  });
-  const teamLinks = hrefs.filter(h => h.href.includes('/team/') || h.href.includes('orgid'));
-  console.log('\n=== TEAM LINKS ===');
-  teamLinks.forEach(l => console.log(' ', l.text, '->', l.href.slice(0, 100)));
 
   await context.close();
   await browser.close();
