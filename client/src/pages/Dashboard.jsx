@@ -193,7 +193,7 @@ export default function Dashboard({ orgId, teamId, slug }) {
               {games.length === 0 ? (
                 <div className="p-4">
                   <div className="text-sm text-center mb-3" style={{ color: 'var(--navy-muted)' }}>Schedule not available yet</div>
-                  <TeamsInTournament eventId={t.pg_event_id} pgUrl={t.pg_url} source={t.source} />
+                  <TeamsInTournament eventId={t.pg_event_id} pgUrl={t.pg_url} source={t.source} ageGroup={team?.age_group} />
                 </div>
               ) : (
                 <div className="divide-y" style={{ borderColor: 'var(--border)' }}>
@@ -239,17 +239,17 @@ export default function Dashboard({ orgId, teamId, slug }) {
   )
 }
 
-function TeamsInTournament({ eventId, pgUrl, source }) {
+function TeamsInTournament({ eventId, pgUrl, source, ageGroup }) {
   const [teams, setTeams] = useState(null)
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     setLoading(true)
-    getTournamentTeams(eventId)
+    getTournamentTeams(eventId, ageGroup)
       .then(t => setTeams(t))
       .catch(() => setTeams([]))
       .finally(() => setLoading(false))
-  }, [eventId])
+  }, [eventId, ageGroup])
 
   if (loading) return <div className="text-xs text-center py-2" style={{ color: 'var(--navy-muted)' }}>Loading teams...</div>
 

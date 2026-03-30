@@ -50,8 +50,9 @@ export function getTournamentFullSchedule(eventId) {
   return fetchJson(`/tournaments/${eventId}/full-schedule`);
 }
 
-export function getTournamentTeams(eventId) {
-  return fetchJson(`/tournaments/${eventId}/teams`);
+export function getTournamentTeams(eventId, ageGroup) {
+  const params = ageGroup ? `?ageGroup=${encodeURIComponent(ageGroup)}` : '';
+  return fetchJson(`/tournaments/${eventId}/teams${params}`);
 }
 
 export function getTournamentBracket(eventId) {
