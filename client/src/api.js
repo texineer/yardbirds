@@ -50,6 +50,10 @@ export function getTournamentFullSchedule(eventId) {
   return fetchJson(`/tournaments/${eventId}/full-schedule`);
 }
 
+export function getTournamentTeams(eventId) {
+  return fetchJson(`/tournaments/${eventId}/teams`);
+}
+
 export function getTournamentBracket(eventId) {
   return fetchJson(`/tournaments/${eventId}/bracket`);
 }

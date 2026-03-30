@@ -219,6 +219,17 @@ router.get('/tournaments/:eventId/full-schedule', async (req, res) => {
   }
 });
 
+// GET /api/tournaments/:eventId/teams - scrape registered teams from PG event page
+router.get('/tournaments/:eventId/teams', async (req, res) => {
+  try {
+    const { scrapeRegisteredTeams } = require('../scrapers/tournament');
+    const teams = await scrapeRegisteredTeams(parseInt(req.params.eventId));
+    res.json(teams);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/tournaments/:eventId/bracket - get or scrape bracket games
 router.get('/tournaments/:eventId/bracket', async (req, res) => {
   try {

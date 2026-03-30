@@ -333,6 +333,49 @@ async function scrapeTournamentSchedule(eventId) {
   }
 }
 
+// Scrape registered teams from the PG event page
+async function scrapeRegisteredTeams(eventId) {
+  const url = `${PG_BASE}/events/Default.aspx?event=${eventId}`;
+  console.log(`[scraper] Fetching registered teams: ${url}`);
+
+  try {
+    const { data: html } = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      },
+      timeout: 30000,
+    });
+
+    const $ = cheerio.load(html);
+    const teams = new Map(); // dedup by orgId-teamId
+
+    // Find all team links: /PGBA/Team/default.aspx?orgid=XXX&orgteamid=XXX
+    $('a[href*="/PGBA/Team/default.aspx"]').each((_, el) => {
+      const href = $(el).attr('href') || '';
+      const orgMatch = href.match(/orgid=(\d+)/);
+      const teamIdMatch = href.match(/orgteamid=(\d+)/);
+      const name = $(el).text().trim();
+      if (orgMatch && teamIdMatch && name && name.length > 2) {
+        const key = `${orgMatch[1]}-${teamIdMatch[1]}`;
+        if (!teams.has(key)) {
+          teams.set(key, {
+            name,
+            orgId: parseInt(orgMatch[1]),
+            teamId: parseInt(teamIdMatch[1]),
+          });
+        }
+      }
+    });
+
+    const result = [...teams.values()].sort((a, b) => a.name.localeCompare(b.name));
+    console.log(`[scraper] Found ${result.length} registered teams for event ${eventId}`);
+    return result;
+  } catch (err) {
+    console.log(`[scraper] Registered teams error for event ${eventId}: ${err.message}`);
+    return [];
+  }
+}
+
 // Scrape bracket games from the PG Brackets page
 // URL: /events/Brackets.aspx?event={eventId}
 async function scrapeBracketGames(eventId) {
@@ -456,4 +499,4 @@ async function scrapeBracketGames(eventId) {
   }
 }
 
-module.exports = { scrapeTournamentPage, scrapePitchingReport, scrapeTournamentSchedule, scrapeBracketGames };
+module.exports = { scrapeTournamentPage, scrapePitchingReport, scrapeTournamentSchedule, scrapeBracketGames, scrapeRegisteredTeams };

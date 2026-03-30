@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { getTeam, getSchedule, triggerScrape } from '../api'
+import { getTeam, getSchedule, triggerScrape, getTournamentTeams } from '../api'
 import GameCard from '../components/GameCard'
 import LoadingSpinner from '../components/LoadingSpinner'
 
@@ -183,10 +183,13 @@ export default function Dashboard({ orgId, teamId, slug }) {
               </div>
             </div>
 
-            {/* Games */}
+            {/* Games or Teams list */}
             <div className="rounded-b-xl overflow-hidden border border-t-0 mb-1" style={{ borderColor: 'var(--border)' }}>
               {games.length === 0 ? (
-                <div className="p-4 text-sm text-center" style={{ color: 'var(--navy-muted)' }}>No games scheduled</div>
+                <div className="p-4">
+                  <div className="text-sm text-center mb-3" style={{ color: 'var(--navy-muted)' }}>Schedule not available yet</div>
+                  <TeamsInTournament eventId={t.pg_event_id} slug={slug} />
+                </div>
               ) : (
                 <div className="divide-y" style={{ borderColor: 'var(--border)' }}>
                   {games.sort((a, b) => (a.game_date || '').localeCompare(b.game_date || '') || (a.game_time || '').localeCompare(b.game_time || '')).map((g, i) => (
@@ -227,6 +230,45 @@ export default function Dashboard({ orgId, teamId, slug }) {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+function TeamsInTournament({ eventId, slug }) {
+  const [teams, setTeams] = useState(null)
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    setLoading(true)
+    getTournamentTeams(eventId)
+      .then(setTeams)
+      .catch(() => setTeams([]))
+      .finally(() => setLoading(false))
+  }, [eventId])
+
+  if (loading) return <div className="text-xs text-center py-2" style={{ color: 'var(--navy-muted)' }}>Loading teams...</div>
+  if (!teams || teams.length === 0) return null
+
+  return (
+    <div>
+      <div className="text-[10px] font-bold uppercase tracking-[0.15em] mb-2" style={{ color: 'var(--navy-muted)' }}>
+        REGISTERED TEAMS ({teams.length})
+      </div>
+      <div className="space-y-1">
+        {teams.map((t, i) => (
+          <div key={`${t.orgId}-${t.teamId}`}
+            className="flex items-center gap-2 py-1.5 px-2 rounded-lg text-sm"
+            style={{ background: i % 2 === 0 ? 'var(--sky)' : 'transparent' }}>
+            <span className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold flex-shrink-0"
+              style={{ background: 'var(--navy)', color: 'white' }}>
+              {t.name.charAt(0)}
+            </span>
+            <span className="flex-1 font-medium truncate" style={{ color: 'var(--navy)' }}>
+              {t.name}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
