@@ -13,14 +13,12 @@ export default function ScoreGame() {
   const [creating, setCreating] = useState(false)
   const [allTeams, setAllTeams] = useState(null)
 
-  // Global admin: load all registered teams; others: use their roles
+  // Load all registered teams (for opponent dropdown + global admin team list)
   useEffect(() => {
-    if (isGlobalAdmin) {
-      getTeams()
-        .then(setAllTeams)
-        .catch(() => setAllTeams([]))
-    }
-  }, [isGlobalAdmin])
+    getTeams()
+      .then(setAllTeams)
+      .catch(() => setAllTeams([]))
+  }, [])
 
   // Build team list: global admin sees all teams, others see their scorable teams
   const scorableTeams = isGlobalAdmin
@@ -58,7 +56,7 @@ export default function ScoreGame() {
     return null
   }
 
-  const teamsLoading = isGlobalAdmin && allTeams === null
+  const teamsLoading = allTeams === null
 
   return (
     <div className="min-h-dvh flex flex-col">
@@ -115,15 +113,21 @@ export default function ScoreGame() {
             <div>
               <label className="text-[10px] font-bold uppercase tracking-widest block mb-1.5"
                 style={{ color: 'var(--navy-muted)' }}>Opponent</label>
-              <input
-                type="text"
+              <select
                 required
-                className="w-full h-12 px-4 rounded-xl border-2 text-sm font-medium focus:outline-none"
+                className="w-full h-12 px-4 rounded-xl border-2 text-sm font-medium focus:outline-none appearance-none"
                 style={{ borderColor: 'var(--border)', color: 'var(--navy)', background: 'var(--cream)' }}
-                placeholder="Opponent team name"
                 value={opponent}
-                onChange={e => setOpponent(e.target.value)}
-              />
+                onChange={e => setOpponent(e.target.value)}>
+                <option value="">Select opponent...</option>
+                {(allTeams || [])
+                  .filter(t => t.slug !== selectedTeam)
+                  .map(t => (
+                    <option key={t.slug || `${t.pg_org_id}-${t.pg_team_id}`} value={t.name}>
+                      {t.name}{t.age_group ? ` (${t.age_group})` : ''}
+                    </option>
+                  ))}
+              </select>
             </div>
 
             {error && (
