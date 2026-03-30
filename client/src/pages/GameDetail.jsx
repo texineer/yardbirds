@@ -103,56 +103,30 @@ export default function GameDetail() {
         </div>
       </div>
 
-      {/* Opponent Pitching Scouting Report */}
-      {opponentPitchers && opponentPitchers.pitchers?.length > 0 && (
-        <div>
-          <div className="section-label mb-2">
-            Opponent Pitching — {opponentPitchers.opponentName}
-          </div>
-          <div className="card overflow-hidden">
-            <div className="px-4 py-2" style={{ background: 'var(--navy)', color: 'white' }}>
-              <span className="text-[10px] font-bold uppercase tracking-wider">Tournament Pitch Counts</span>
-            </div>
-            <table className="w-full stat-table">
-              <thead>
-                <tr>
-                  <th className="text-left">Pitcher</th>
-                  <th className="text-right">Total</th>
-                  <th className="text-right">App</th>
-                  <th className="text-right">IP</th>
-                  <th className="text-right">Max</th>
-                </tr>
-              </thead>
-              <tbody>
-                {opponentPitchers.pitchers.map((p, i) => {
-                  const sev = pitchSeverity(p.max_pitches)
-                  const pct = Math.min((p.total_pitches / (DAILY_MAX * (p.appearances || 1))) * 100, 100)
-                  return (
-                    <tr key={i}>
-                      <td>
-                        <span className="font-semibold">{p.player_name}</span>
-                        <div className="pitch-bar mt-1">
-                          <div className={`pitch-bar-fill pitch-bar-${sev}`} style={{ width: `${Math.min((p.total_pitches / DAILY_MAX) * 100, 100)}%` }} />
-                        </div>
-                      </td>
-                      <td className="text-right font-display text-lg">{p.total_pitches}</td>
-                      <td className="text-right" style={{ color: 'var(--navy-muted)' }}>{p.appearances}</td>
-                      <td className="text-right" style={{ color: 'var(--navy-muted)' }}>{p.total_innings || '-'}</td>
-                      <td className="text-right">
-                        <span className={`font-display text-lg ${
-                          sev === 'danger' ? 'text-[var(--danger)]' :
-                          sev === 'warning' ? 'text-[var(--warning)]' : ''
-                        }`}>
-                          {p.max_pitches}
-                        </span>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-          <p className="text-[10px] mt-1.5 font-semibold uppercase tracking-wider" style={{ color: 'var(--navy-muted)' }}>
+      {/* Tournament Pitch Counts — Both Teams */}
+      {opponentPitchers && (opponentPitchers.ourPitchers?.length > 0 || opponentPitchers.opponentPitchers?.length > 0) && (
+        <div className="space-y-4">
+          <div className="section-label">Tournament Pitch Counts</div>
+
+          {/* Our Team */}
+          {opponentPitchers.ourPitchers?.length > 0 && (
+            <TeamPitchTable
+              teamName={opponentPitchers.ourTeamName || 'Our Team'}
+              pitchers={opponentPitchers.ourPitchers}
+              accent="var(--powder)"
+            />
+          )}
+
+          {/* Opponent */}
+          {opponentPitchers.opponentPitchers?.length > 0 && (
+            <TeamPitchTable
+              teamName={opponentPitchers.opponentName || 'Opponent'}
+              pitchers={opponentPitchers.opponentPitchers}
+              accent="var(--loss)"
+            />
+          )}
+
+          <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--navy-muted)' }}>
             Cumulative pitch counts for this tournament
           </p>
         </div>
@@ -271,6 +245,54 @@ export default function GameDetail() {
           <p className="text-xs mt-1" style={{ color: 'var(--navy-muted)' }}>Pitch counts aren't available for this game</p>
         </div>
       )}
+    </div>
+  )
+}
+
+function TeamPitchTable({ teamName, pitchers, accent }) {
+  return (
+    <div className="card overflow-hidden">
+      <div className="px-4 py-2 flex items-center gap-2" style={{ background: 'var(--navy)', color: 'white' }}>
+        <span className="w-2 h-2 rounded-full" style={{ background: accent }} />
+        <span className="text-[10px] font-bold uppercase tracking-wider">{teamName}</span>
+      </div>
+      <table className="w-full stat-table">
+        <thead>
+          <tr>
+            <th className="text-left">Pitcher</th>
+            <th className="text-right">Total</th>
+            <th className="text-right">App</th>
+            <th className="text-right">IP</th>
+            <th className="text-right">Max</th>
+          </tr>
+        </thead>
+        <tbody>
+          {pitchers.map((p, i) => {
+            const sev = pitchSeverity(p.max_pitches)
+            return (
+              <tr key={i}>
+                <td>
+                  <span className="font-semibold">{p.player_name}</span>
+                  <div className="pitch-bar mt-1">
+                    <div className={`pitch-bar-fill pitch-bar-${sev}`} style={{ width: `${Math.min((p.total_pitches / DAILY_MAX) * 100, 100)}%` }} />
+                  </div>
+                </td>
+                <td className="text-right font-display text-lg">{p.total_pitches}</td>
+                <td className="text-right" style={{ color: 'var(--navy-muted)' }}>{p.appearances}</td>
+                <td className="text-right" style={{ color: 'var(--navy-muted)' }}>{p.total_innings || '-'}</td>
+                <td className="text-right">
+                  <span className={`font-display text-lg ${
+                    sev === 'danger' ? 'text-[var(--danger)]' :
+                    sev === 'warning' ? 'text-[var(--warning)]' : ''
+                  }`}>
+                    {p.max_pitches}
+                  </span>
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
     </div>
   )
 }

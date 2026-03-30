@@ -152,11 +152,15 @@ router.get('/games/:gameId/opponent-pitchers', async (req, res) => {
   try {
     const game = await queries.getGame(parseInt(req.params.gameId));
     if (!game) return res.status(404).json({ error: 'Game not found' });
-    if (!game.pg_event_id || !game.opponent_name) {
-      return res.json({ opponentName: game.opponent_name || 'Unknown', pitchers: [] });
+    if (!game.pg_event_id) {
+      return res.json({ opponentName: game.opponent_name || 'Unknown', opponentPitchers: [], ourPitchers: [] });
     }
-    const pitchers = await queries.getOpponentPitcherTotals(game.pg_event_id, game.opponent_name);
-    res.json({ opponentName: game.opponent_name, pitchers });
+    // Get our team name from pitch counts (it's stored as team_name)
+    const team = await queries.getTeam(game.team_org_id, game.team_id);
+    const ourTeamName = team ? team.name : '';
+    const opponentPitchers = game.opponent_name ? await queries.getOpponentPitcherTotals(game.pg_event_id, game.opponent_name) : [];
+    const ourPitchers = ourTeamName ? await queries.getOpponentPitcherTotals(game.pg_event_id, ourTeamName) : [];
+    res.json({ opponentName: game.opponent_name, ourTeamName, opponentPitchers, ourPitchers });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
