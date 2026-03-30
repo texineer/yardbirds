@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { getGame, getTeamBySlug, getTeams, initScorebookGame, saveLineup, startScorebookGame } from '../api'
 import { useAuth } from '../context/AuthContext'
@@ -13,18 +13,18 @@ export default function LineupSetup() {
   const [game, setGame] = useState(null)
   const [team, setTeam] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState('home')
+  const [activeTab, setActiveTab] = useState('our')
   const [ourSide, setOurSide] = useState('home')
   const [saving, setSaving] = useState(false)
+  const [opponentTeam, setOpponentTeam] = useState(null)
 
-  // Lineup state: 9 rows each side
+  // Lineup state: 9 slots each side
   const [homeLineup, setHomeLineup] = useState(
-    Array.from({ length: 9 }, (_, i) => ({ playerName: '', jerseyNumber: '', position: '' }))
+    Array.from({ length: 9 }, () => ({ playerName: '', jerseyNumber: '', position: '' }))
   )
   const [awayLineup, setAwayLineup] = useState(
-    Array.from({ length: 9 }, (_, i) => ({ playerName: '', jerseyNumber: '', position: '' }))
+    Array.from({ length: 9 }, () => ({ playerName: '', jerseyNumber: '', position: '' }))
   )
-  const [opponentTeam, setOpponentTeam] = useState(null)
 
   useEffect(() => {
     Promise.all([
@@ -34,13 +34,10 @@ export default function LineupSetup() {
     ]).then(([g, t, allTeams]) => {
       setGame(g)
       setTeam(t)
-      // Find opponent team by name and load their roster
       if (g?.opponent_name && allTeams.length) {
         const oppTeam = allTeams.find(at => at.name === g.opponent_name)
         if (oppTeam?.slug) {
-          getTeamBySlug(oppTeam.slug)
-            .then(setOpponentTeam)
-            .catch(() => {})
+          getTeamBySlug(oppTeam.slug).then(setOpponentTeam).catch(() => {})
         }
       }
       setLoading(false)
@@ -51,7 +48,6 @@ export default function LineupSetup() {
 
   if (loading || authLoading) return <LoadingSpinner />
 
-  // Auth gate
   if (!user) {
     return (
       <div className="text-center py-12">
@@ -78,20 +74,26 @@ export default function LineupSetup() {
     )
   }
 
-  function updateEntry(side, idx, field, value) {
-    const setter = side === 'home' ? setHomeLineup : setAwayLineup
-    setter(prev => {
-      const next = [...prev]
-      next[idx] = { ...next[idx], [field]: value }
-      return next
-    })
-  }
+  const ourLineup = ourSide === 'home' ? homeLineup : awayLineup
+  const themLineup = ourSide === 'home' ? awayLineup : homeLineup
+  const ourSetter = ourSide === 'home' ? setHomeLineup : setAwayLineup
+  const themSetter = ourSide === 'home' ? setAwayLineup : setHomeLineup
 
-  function pickPlayer(setter, idx, player) {
-    setter(prev => {
+  const currentLineup = activeTab === 'our' ? ourLineup : themLineup
+  const currentSetter = activeTab === 'our' ? ourSetter : themSetter
+  const currentRoster = activeTab === 'our' ? (team?.players || []) : (opponentTeam?.players || [])
+
+  // Players already in lineup
+  const assignedNames = new Set(currentLineup.filter(e => e.playerName).map(e => e.playerName))
+  const availablePlayers = currentRoster.filter(p => !assignedNames.has(p.name))
+
+  function assignPlayer(player) {
+    // Find first empty slot
+    const emptyIdx = currentLineup.findIndex(e => !e.playerName)
+    if (emptyIdx === -1) return
+    currentSetter(prev => {
       const next = [...prev]
-      next[idx] = {
-        ...next[idx],
+      next[emptyIdx] = {
         playerName: player.name,
         jerseyNumber: player.number || '',
         position: player.position || '',
@@ -99,6 +101,28 @@ export default function LineupSetup() {
       return next
     })
   }
+
+  function removeFromSlot(idx) {
+    currentSetter(prev => {
+      const next = [...prev]
+      next[idx] = { playerName: '', jerseyNumber: '', position: '' }
+      return next
+    })
+  }
+
+  function moveSlot(fromIdx, direction) {
+    const toIdx = fromIdx + direction
+    if (toIdx < 0 || toIdx >= currentLineup.length) return
+    currentSetter(prev => {
+      const next = [...prev]
+      const temp = next[fromIdx]
+      next[fromIdx] = next[toIdx]
+      next[toIdx] = temp
+      return next
+    })
+  }
+
+  const hasEnough = ourLineup.some(e => e.playerName) && themLineup.some(e => e.playerName)
 
   async function handleSaveAndStart() {
     setSaving(true)
@@ -109,7 +133,6 @@ export default function LineupSetup() {
 
       await initScorebookGame(parseInt(gameId), { homeTeamName, awayTeamName, ourSide })
 
-      // Save both lineups
       const homeEntries = homeLineup.map((e, i) => ({ battingOrder: i + 1, ...e }))
       const awayEntries = awayLineup.map((e, i) => ({ battingOrder: i + 1, ...e }))
       await saveLineup(parseInt(gameId), { teamSide: 'home', entries: homeEntries })
@@ -123,13 +146,6 @@ export default function LineupSetup() {
       setSaving(false)
     }
   }
-
-  const ourLineup = ourSide === 'home' ? homeLineup : awayLineup
-  const themLineup = ourSide === 'home' ? awayLineup : homeLineup
-  const ourSetter = ourSide === 'home' ? setHomeLineup : setAwayLineup
-  const themSetter = ourSide === 'home' ? setAwayLineup : setHomeLineup
-
-  const hasEnough = ourLineup.some(e => e.playerName) && themLineup.some(e => e.playerName)
 
   return (
     <div className="space-y-4 pb-8">
@@ -166,111 +182,141 @@ export default function LineupSetup() {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="card overflow-hidden">
-        <div className="flex border-b-2" style={{ borderColor: 'var(--border)' }}>
-          {['our', 'opp'].map(tab => {
-            const isOur = tab === 'our'
-            const isActive = activeTab === tab
-            const label = isOur ? (team?.name?.toUpperCase() || 'OUR TEAM') : (game?.opponent_name?.toUpperCase() || 'OPPONENT')
-            return (
-              <button key={tab}
-                className="flex-1 py-3 font-display text-lg tracking-wider relative transition-colors"
-                style={{ color: isActive ? 'var(--navy)' : 'var(--navy-muted)' }}
-                onClick={() => setActiveTab(tab)}>
-                <span className="truncate block px-2">{label}</span>
-                {isActive && (
-                  <div className="absolute bottom-0 inset-x-4 h-[3px] rounded-full"
-                    style={{ background: 'var(--gold)' }} />
-                )}
-              </button>
-            )
-          })}
-        </div>
+      {/* Team Tabs */}
+      <div className="flex rounded-xl overflow-hidden border-2 p-0.5 gap-0.5"
+        style={{ borderColor: 'var(--border)', background: 'var(--sky)' }}>
+        {['our', 'opp'].map(tab => {
+          const label = tab === 'our'
+            ? (team?.name?.toUpperCase() || 'OUR TEAM')
+            : (game?.opponent_name?.toUpperCase() || 'OPPONENT')
+          const count = (tab === 'our' ? ourLineup : themLineup).filter(e => e.playerName).length
+          return (
+            <button key={tab}
+              className="flex-1 py-2.5 rounded-lg font-display text-base tracking-wider transition-all"
+              style={{
+                background: activeTab === tab ? 'var(--navy)' : 'transparent',
+                color: activeTab === tab ? 'white' : 'var(--navy-muted)',
+              }}
+              onClick={() => setActiveTab(tab)}>
+              <span className="truncate block px-1">{label}</span>
+              <span className="text-[10px] opacity-70">{count}/9</span>
+            </button>
+          )
+        })}
+      </div>
 
-        {/* Lineup rows */}
-        <div className="px-3 py-2 space-y-1.5">
-          <div className="flex items-center gap-2 px-1 pb-1">
-            <span className="w-6" />
-            <span className="flex-1 text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--navy-muted)' }}>PLAYER</span>
-            <span className="w-14 text-[10px] font-bold uppercase tracking-widest text-center" style={{ color: 'var(--navy-muted)' }}>POS</span>
-          </div>
-
-          {(activeTab === 'our' ? ourLineup : themLineup).map((entry, idx) => {
-            const setter = activeTab === 'our' ? ourSetter : themSetter
-            const players = activeTab === 'our'
-              ? (team?.players || [])
-              : (opponentTeam?.players || [])
+      {/* Batting Order Slots */}
+      <div>
+        <div className="section-label mb-2">BATTING ORDER</div>
+        <div className="space-y-1.5">
+          {currentLineup.map((entry, idx) => {
             const filled = !!entry.playerName
-
             return (
-              <div key={idx}>
-                <div className="flex items-center gap-2 py-2 px-2 rounded-xl transition-colors"
-                  style={{
-                    borderLeft: `3px solid ${filled ? 'var(--gold)' : 'var(--border)'}`,
-                    background: filled ? 'rgba(212,168,50,0.06)' : 'var(--cream)',
-                  }}>
-                  <span className="font-display text-lg w-6 text-center flex-shrink-0"
-                    style={{ color: 'var(--navy-muted)' }}>{idx + 1}</span>
-                  {players.length > 0 ? (
-                    <select
-                      className="flex-1 h-11 px-2 rounded-lg border text-sm font-medium focus:outline-none"
-                      style={{ borderColor: 'var(--border)', color: filled ? 'var(--navy)' : 'var(--navy-muted)', background: 'var(--cream)' }}
-                      value={entry.playerName}
-                      onChange={e => {
-                        const selected = players.find(p => p.name === e.target.value)
-                        if (selected) {
-                          pickPlayer(setter, idx, selected)
-                        } else {
-                          setter(prev => {
-                            const next = [...prev]
-                            next[idx] = { ...next[idx], playerName: '', jerseyNumber: '', position: '' }
-                            return next
-                          })
-                        }
-                      }}>
-                      <option value="">Select player...</option>
-                      {players.map(p => (
-                        <option key={p.id || p.name} value={p.name}>
-                          {p.name}{p.number ? ` #${p.number}` : ''}{p.position ? ` (${p.position})` : ''}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      className="flex-1 h-11 px-3 rounded-lg border text-sm font-medium focus:outline-none"
-                      style={{ borderColor: 'var(--border)', color: 'var(--navy)', background: 'var(--cream)' }}
-                      placeholder="Player name..."
-                      value={entry.playerName}
-                      onChange={e => {
-                        setter(prev => {
-                          const next = [...prev]
-                          next[idx] = { ...next[idx], playerName: e.target.value }
-                          return next
-                        })
-                      }}
-                    />
-                  )}
-                  <select
-                    className="h-11 w-16 rounded-lg border text-sm font-bold text-center appearance-none"
-                    style={{ borderColor: 'var(--border)', color: 'var(--navy)', background: 'var(--cream)' }}
-                    value={entry.position}
-                    onChange={e => {
-                      setter(prev => {
-                        const next = [...prev]
-                        next[idx] = { ...next[idx], position: e.target.value }
-                        return next
-                      })
-                    }}>
-                    <option value="">—</option>
-                    {POSITIONS.map(p => <option key={p} value={p}>{p}</option>)}
-                  </select>
-                </div>
+              <div key={idx}
+                className="flex items-center gap-2 py-2 px-2 rounded-xl transition-all"
+                style={{
+                  borderLeft: `3px solid ${filled ? 'var(--gold)' : 'var(--border)'}`,
+                  background: filled ? 'rgba(212,168,50,0.06)' : 'var(--cream)',
+                }}>
+                <span className="font-display text-lg w-6 text-center flex-shrink-0"
+                  style={{ color: 'var(--navy-muted)' }}>{idx + 1}</span>
+
+                {filled ? (
+                  <>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-semibold truncate" style={{ color: 'var(--navy)' }}>
+                        {entry.playerName}
+                      </div>
+                      <div className="flex gap-2 items-center">
+                        {entry.jerseyNumber && (
+                          <span className="text-xs" style={{ color: 'var(--gold-dark, #b8891e)' }}>#{entry.jerseyNumber}</span>
+                        )}
+                        {entry.position && (
+                          <span className="text-xs font-bold" style={{ color: 'var(--navy-muted)' }}>{entry.position}</span>
+                        )}
+                      </div>
+                    </div>
+                    {/* Reorder arrows */}
+                    <div className="flex flex-col gap-0.5">
+                      <button className="w-7 h-5 rounded text-xs flex items-center justify-center"
+                        style={{ background: 'var(--sky)', color: idx === 0 ? 'var(--border)' : 'var(--navy)' }}
+                        disabled={idx === 0}
+                        onClick={() => moveSlot(idx, -1)}>
+                        ▲
+                      </button>
+                      <button className="w-7 h-5 rounded text-xs flex items-center justify-center"
+                        style={{ background: 'var(--sky)', color: idx === currentLineup.length - 1 ? 'var(--border)' : 'var(--navy)' }}
+                        disabled={idx === currentLineup.length - 1}
+                        onClick={() => moveSlot(idx, 1)}>
+                        ▼
+                      </button>
+                    </div>
+                    {/* Remove */}
+                    <button className="w-8 h-8 rounded-lg flex items-center justify-center text-sm active:scale-95"
+                      style={{ background: 'var(--loss-bg, #fdecea)', color: 'var(--loss)' }}
+                      onClick={() => removeFromSlot(idx)}>
+                      ✕
+                    </button>
+                  </>
+                ) : (
+                  <div className="flex-1 text-sm italic py-1.5" style={{ color: 'var(--navy-muted)' }}>
+                    Tap a player below to add
+                  </div>
+                )}
               </div>
             )
           })}
         </div>
       </div>
+
+      {/* Available Players */}
+      {currentRoster.length > 0 && (
+        <div>
+          <div className="section-label mb-2">
+            AVAILABLE PLAYERS ({availablePlayers.length})
+          </div>
+          {availablePlayers.length === 0 ? (
+            <div className="text-sm text-center py-4" style={{ color: 'var(--navy-muted)' }}>
+              All players assigned to lineup
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-1.5">
+              {availablePlayers.map(player => (
+                <button key={player.id || player.name}
+                  className="flex items-center gap-2 p-2.5 rounded-xl text-left active:scale-95 transition-transform"
+                  style={{ background: 'var(--sky)', border: '1px solid var(--border)' }}
+                  onClick={() => assignPlayer(player)}>
+                  <span className="w-8 h-8 rounded-full flex items-center justify-center font-display text-sm text-white flex-shrink-0"
+                    style={{ background: 'var(--navy)' }}>
+                    {player.number || player.name.charAt(0)}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-semibold truncate" style={{ color: 'var(--navy)' }}>
+                      {player.name}
+                    </div>
+                    <div className="text-[10px] font-bold" style={{ color: 'var(--navy-muted)' }}>
+                      {player.position || '—'}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Manual add (when no roster) */}
+      {currentRoster.length === 0 && (
+        <ManualAddForm onAdd={(name) => {
+          const emptyIdx = currentLineup.findIndex(e => !e.playerName)
+          if (emptyIdx === -1) return
+          currentSetter(prev => {
+            const next = [...prev]
+            next[emptyIdx] = { playerName: name, jerseyNumber: '', position: '' }
+            return next
+          })
+        }} />
+      )}
 
       {/* Save & Start */}
       <button
@@ -282,8 +328,36 @@ export default function LineupSetup() {
       </button>
 
       <p className="text-center text-xs" style={{ color: 'var(--navy-muted)' }}>
-        You can skip positions and add players during the game.
+        Tap players to add. Use arrows to reorder. You can add more during the game.
       </p>
+    </div>
+  )
+}
+
+function ManualAddForm({ onAdd }) {
+  const [name, setName] = useState('')
+  return (
+    <div className="card p-3">
+      <div className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--navy-muted)' }}>
+        ADD PLAYER
+      </div>
+      <div className="flex gap-2">
+        <input
+          className="flex-1 h-10 px-3 rounded-lg border text-sm font-medium focus:outline-none"
+          style={{ borderColor: 'var(--border)', color: 'var(--navy)', background: 'var(--cream)' }}
+          placeholder="Player name..."
+          value={name}
+          onChange={e => setName(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && name.trim()) { onAdd(name.trim()); setName('') } }}
+        />
+        <button
+          className="h-10 px-4 rounded-lg font-display text-sm tracking-wider text-white active:scale-95"
+          style={{ background: name.trim() ? 'var(--navy)' : 'var(--navy-muted)' }}
+          disabled={!name.trim()}
+          onClick={() => { onAdd(name.trim()); setName('') }}>
+          ADD
+        </button>
+      </div>
     </div>
   )
 }
