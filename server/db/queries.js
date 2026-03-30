@@ -492,6 +492,16 @@ async function getGameSprayChart(gameId) {
   `, [gameId]);
 }
 
+async function getGameScore(gameId) {
+  const db = await getDb();
+  // Get scorebook to know which side is home
+  const sb = get(db, 'SELECT our_side FROM game_scorebook WHERE game_id = ?', [gameId]);
+  // Sum runs_scored from plate_appearances grouped by half (top = away scoring, bottom = home scoring)
+  const homeRuns = get(db, `SELECT COALESCE(SUM(runs_scored), 0) as runs FROM plate_appearances WHERE game_id = ? AND half = 'bottom'`, [gameId]);
+  const awayRuns = get(db, `SELECT COALESCE(SUM(runs_scored), 0) as runs FROM plate_appearances WHERE game_id = ? AND half = 'top'`, [gameId]);
+  return { homeScore: homeRuns?.runs ?? 0, awayScore: awayRuns?.runs ?? 0 };
+}
+
 async function getHalfInningStats(gameId, inning, half) {
   const db = await getDb();
   return get(db, `
@@ -588,7 +598,7 @@ module.exports = {
   getLineup, upsertLineupEntry, recordSubstitution,
   getInningScores, upsertInningScore,
   getPlateAppearances, insertPlateAppearance, updatePlateAppearanceOutcome,
-  logPitch, getLivePitchCounts, deleteLastPitch, getFullScorebookState, getGameSprayChart, getHalfInningStats,
+  logPitch, getLivePitchCounts, deleteLastPitch, getFullScorebookState, getGameSprayChart, getGameScore, getHalfInningStats,
   // Auth
   createUser, getUserByEmail, getUserById, getUserTeamRoles, getUserRoleForTeam,
   setUserTeamRole, removeUserTeamRole, getTeamMembers, getTeamFromGameId,

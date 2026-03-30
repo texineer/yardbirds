@@ -253,6 +253,16 @@ router.post('/games', requireAuth, async (req, res) => {
 
 const requireScorekeeper = requireTeamRole(['admin', 'scorekeeper']);
 
+// GET /api/games/:gameId/score
+router.get('/games/:gameId/score', async (req, res) => {
+  try {
+    const score = await queries.getGameScore(parseInt(req.params.gameId));
+    res.json(score);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/games/:gameId/spray-chart
 router.get('/games/:gameId/spray-chart', async (req, res) => {
   try {

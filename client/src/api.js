@@ -134,6 +134,11 @@ async function mutate(method, url, body) {
   return res.json();
 }
 
+// Game score (calculated from play data)
+export function getGameScore(gameId) {
+  return fetchJson(`/games/${gameId}/score`);
+}
+
 // Viewer (no auth)
 export function getScorebookState(gameId) {
   return fetchJson(`/games/${gameId}/scorebook`).catch(() => null);
