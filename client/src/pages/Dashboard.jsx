@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { getTeam, getSchedule, triggerScrape, getTournamentTeams } from '../api'
+import { getTeam, getSchedule, triggerScrape } from '../api'
 import GameCard from '../components/GameCard'
 import LoadingSpinner from '../components/LoadingSpinner'
 
@@ -191,9 +191,15 @@ export default function Dashboard({ orgId, teamId, slug }) {
             {/* Games or Teams list */}
             <div className="rounded-b-xl overflow-hidden border border-t-0 mb-1" style={{ borderColor: 'var(--border)' }}>
               {games.length === 0 ? (
-                <div className="p-4">
-                  <div className="text-sm text-center mb-3" style={{ color: 'var(--navy-muted)' }}>Schedule not available yet</div>
-                  <TeamsInTournament eventId={t.pg_event_id} />
+                <div className="p-4 text-center">
+                  <div className="text-sm mb-2" style={{ color: 'var(--navy-muted)' }}>Schedule not available yet</div>
+                  {t.pg_url && (
+                    <a href={t.pg_url} target="_blank" rel="noopener"
+                      className="inline-block text-xs font-bold no-underline px-3 py-1.5 rounded-lg"
+                      style={{ background: 'var(--gold)', color: 'var(--navy)' }}>
+                      Check {t.source === 'ft' ? 'Five Tool' : 'Perfect Game'} for updates
+                    </a>
+                  )}
                 </div>
               ) : (
                 <div className="divide-y" style={{ borderColor: 'var(--border)' }}>
@@ -235,39 +241,6 @@ export default function Dashboard({ orgId, teamId, slug }) {
           </div>
         </div>
       )}
-    </div>
-  )
-}
-
-function TeamsInTournament({ eventId }) {
-  const [teams, setTeams] = useState(null)
-  const [loading, setLoading] = useState(false)
-
-  useEffect(() => {
-    setLoading(true)
-    getTournamentTeams(eventId)
-      .then(t => setTeams(t))
-      .catch(() => setTeams([]))
-      .finally(() => setLoading(false))
-  }, [eventId])
-
-  if (loading) return <div className="text-xs text-center py-2" style={{ color: 'var(--navy-muted)' }}>Loading teams...</div>
-  if (!teams || teams.length === 0) return <p className="text-xs text-center" style={{ color: 'var(--navy-muted)' }}>Games will appear once the schedule is posted</p>
-
-  return (
-    <div>
-      <div className="text-[10px] font-bold uppercase tracking-[0.15em] mb-2" style={{ color: 'var(--navy-muted)' }}>
-        TEAMS ({teams.length})
-      </div>
-      <div className="flex flex-wrap gap-1.5">
-        {teams.map((t, i) => (
-          <span key={t.name + i}
-            className="text-xs font-medium px-2 py-1 rounded-full"
-            style={{ background: 'var(--sky)', color: 'var(--navy)', border: '1px solid var(--border)' }}>
-            {t.name}
-          </span>
-        ))}
-      </div>
     </div>
   )
 }
