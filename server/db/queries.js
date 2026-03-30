@@ -480,6 +480,35 @@ async function getFullScorebookState(gameId) {
   return { state, homeLineup, awayLineup, inningScores, pitchCounts, plateAppearances };
 }
 
+// ── Bracket Games ─────────────────────────────────────────────────────────
+
+async function getBracketGames(eventId) {
+  const db = await getDb();
+  return all(db, `
+    SELECT * FROM games
+    WHERE pg_event_id = ? AND game_type = 'bracket'
+    ORDER BY bracket_name, bracket_round, game_time
+  `, [eventId]);
+}
+
+async function upsertBracketGame({ pgGameId, pgEventId, teamOrgId, teamId, opponentName, gameDate, gameTime, field, scoreUs, scoreThem, result, bracketName, bracketRound, homeSeed, awaySeed }) {
+  const db = await getDb();
+  const sourceKey = `bracket-${pgEventId}-${pgGameId || gameDate + gameTime + opponentName}`;
+  const existing = pgGameId ? get(db, 'SELECT id FROM games WHERE pg_game_id = ?', [pgGameId]) : get(db, 'SELECT id FROM games WHERE source_game_key = ?', [sourceKey]);
+
+  if (existing) {
+    run(db, `UPDATE games SET opponent_name=?, game_date=?, game_time=?, field=?, score_us=?, score_them=?, result=?,
+      game_type='bracket', bracket_name=?, bracket_round=?, home_seed=?, away_seed=? WHERE id=?`,
+      [opponentName, gameDate, gameTime, field, scoreUs, scoreThem, result, bracketName, bracketRound, homeSeed, awaySeed, existing.id]);
+  } else {
+    run(db, `INSERT INTO games (pg_game_id, pg_event_id, team_org_id, team_id, opponent_name, game_date, game_time, field,
+      score_us, score_them, result, source, source_game_key, game_type, bracket_name, bracket_round, home_seed, away_seed)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pg', ?, 'bracket', ?, ?, ?, ?)`,
+      [pgGameId, pgEventId, teamOrgId, teamId, opponentName, gameDate, gameTime, field,
+       scoreUs, scoreThem, result, sourceKey, bracketName, bracketRound, homeSeed, awaySeed]);
+  }
+}
+
 // ── Spray Chart ───────────────────────────────────────────────────────────
 
 async function getGameSprayChart(gameId) {
@@ -599,6 +628,7 @@ module.exports = {
   getInningScores, upsertInningScore,
   getPlateAppearances, insertPlateAppearance, updatePlateAppearanceOutcome,
   logPitch, getLivePitchCounts, deleteLastPitch, getFullScorebookState, getGameSprayChart, getGameScore, getHalfInningStats,
+  getBracketGames, upsertBracketGame,
   // Auth
   createUser, getUserByEmail, getUserById, getUserTeamRoles, getUserRoleForTeam,
   setUserTeamRole, removeUserTeamRole, getTeamMembers, getTeamFromGameId,

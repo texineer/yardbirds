@@ -219,6 +219,72 @@ router.get('/tournaments/:eventId/full-schedule', async (req, res) => {
   }
 });
 
+// GET /api/tournaments/:eventId/bracket - get or scrape bracket games
+router.get('/tournaments/:eventId/bracket', async (req, res) => {
+  try {
+    const eventId = parseInt(req.params.eventId);
+    const tournament = await queries.getTournament(eventId);
+
+    // FT tournaments have no brackets
+    if (tournament && tournament.source === 'ft') {
+      return res.json({ tournament, brackets: [] });
+    }
+
+    // Try DB first
+    let bracketGames = await queries.getBracketGames(eventId);
+
+    // If no bracket games in DB, try live scrape
+    if (bracketGames.length === 0) {
+      const { scrapeBracketGames } = require('../scrapers/tournament');
+      const scraped = await scrapeBracketGames(eventId);
+
+      // Store scraped bracket games
+      for (const g of scraped) {
+        if (g.homeTeam && g.awayTeam) {
+          await queries.upsertBracketGame({
+            pgGameId: g.pgGameId,
+            pgEventId: eventId,
+            teamOrgId: 0,
+            teamId: 0,
+            opponentName: `${g.homeTeam.name} vs ${g.awayTeam.name}`,
+            gameDate: g.gameDate,
+            gameTime: g.gameTime,
+            field: g.field,
+            scoreUs: g.homeTeam.score,
+            scoreThem: g.awayTeam.score,
+            result: null,
+            bracketName: g.bracketName,
+            bracketRound: g.round,
+            homeSeed: g.homeTeam.seed,
+            awaySeed: g.awayTeam.seed,
+          });
+        }
+      }
+
+      // Return scraped data directly (richer than DB)
+      // Group by bracket name
+      const grouped = {};
+      for (const g of scraped) {
+        const name = g.bracketName || 'Bracket';
+        if (!grouped[name]) grouped[name] = [];
+        grouped[name].push(g);
+      }
+      return res.json({ tournament, brackets: Object.entries(grouped).map(([name, games]) => ({ name, games })) });
+    }
+
+    // Group DB results by bracket name
+    const grouped = {};
+    for (const g of bracketGames) {
+      const name = g.bracket_name || 'Bracket';
+      if (!grouped[name]) grouped[name] = [];
+      grouped[name].push(g);
+    }
+    res.json({ tournament, brackets: Object.entries(grouped).map(([name, games]) => ({ name, games })) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/tournaments/:eventId/pitching-report
 router.get('/tournaments/:eventId/pitching-report', async (req, res) => {
   try {

@@ -333,4 +333,127 @@ async function scrapeTournamentSchedule(eventId) {
   }
 }
 
-module.exports = { scrapeTournamentPage, scrapePitchingReport, scrapeTournamentSchedule };
+// Scrape bracket games from the PG Brackets page
+// URL: /events/Brackets.aspx?event={eventId}
+async function scrapeBracketGames(eventId) {
+  const url = `${PG_BASE}/events/Brackets.aspx?event=${eventId}`;
+  console.log(`[scraper] Fetching bracket page: ${url}`);
+
+  try {
+    const { data: html } = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      },
+      timeout: 30000,
+    });
+
+    const $ = cheerio.load(html);
+    const games = [];
+
+    // Find bracket names (e.g., "14U OPEN GOLD BRACKET", "14U OPEN SILVER BRACKET")
+    const bracketLabels = [];
+    $('span').each((_, el) => {
+      const text = $(el).clone().children().remove().end().text().trim();
+      if (/BRACKET$/i.test(text) && text.length < 80) {
+        bracketLabels.push(text);
+      }
+    });
+
+    // Collect all game top boxes, home boxes, and visitor boxes
+    const gameTopBoxes = [];
+    $('[class*="GameTopBox"]').each((_, el) => gameTopBoxes.push($(el).text().trim().replace(/\s+/g, ' ')));
+
+    const homeBoxes = [];
+    $('[class*="HomeTeamBox"]').each((_, el) => homeBoxes.push($(el).text().trim().replace(/\s+/g, ' ')));
+
+    const visitorBoxes = [];
+    $('[class*="VisitorTeamBox"]').each((_, el) => visitorBoxes.push($(el).text().trim().replace(/\s+/g, ' ')));
+
+    // Collect DK game IDs from all game links on the page
+    const allGameIds = [];
+    $('a[href*="DiamondKast/Game.aspx?gameid="]').each((_, el) => {
+      const m = ($(el).attr('href') || '').match(/gameid=(\d+)/);
+      if (m) allGameIds.push(parseInt(m[1]));
+    });
+    // Deduplicate preserving order
+    const uniqueGameIds = [...new Set(allGameIds)];
+
+    // Determine which bracket each game belongs to based on position
+    // Gold bracket games come first, Silver second (each bracket has equal games typically)
+    const gamesPerBracket = bracketLabels.length > 1
+      ? Math.ceil(gameTopBoxes.length / bracketLabels.length)
+      : gameTopBoxes.length;
+
+    // Determine tournament year from dates on page
+    const bodyText = $('body').text();
+    const yearMatch = bodyText.match(/\b(20\d{2})\b/);
+    const year = yearMatch ? yearMatch[1] : new Date().getFullYear().toString();
+
+    const months = { jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12' };
+
+    const count = Math.min(gameTopBoxes.length, homeBoxes.length, visitorBoxes.length);
+    for (let i = 0; i < count; i++) {
+      const gi = gameTopBoxes[i];
+
+      // Parse game info: "GM: 11 | 3/29 | 10:00 AM | GAME RECAPC2 @ Venue"
+      const gmMatch = gi.match(/GM:\s*(\d+)/);
+      const dateMatch = gi.match(/(\d{1,2})\/(\d{1,2})/);
+      const timeMatch = gi.match(/(\d{1,2}:\d{2}\s*(?:AM|PM))/i);
+      const fieldMatch = gi.match(/(?:GAME RECAP)?([A-Z][A-Za-z0-9\s]+?)\s*@\s*(.+)/);
+
+      // Parse home team: "#4 Team Name 4" (seed, name, score)
+      const hm = homeBoxes[i].match(/#(\d+)\s+(.+?)\s+(\d+)\s*$/);
+      const vm = visitorBoxes[i].match(/#(\d+)\s+(.+?)\s+(\d+)\s*$/);
+
+      // Find game ID for this game (by index into unique list)
+      const pgGameId = uniqueGameIds[i] || null;
+
+      // Date: M/D → YYYY-MM-DD
+      let gameDate = '';
+      if (dateMatch) {
+        const mm = String(dateMatch[1]).padStart(2, '0');
+        const dd = String(dateMatch[2]).padStart(2, '0');
+        gameDate = `${year}-${mm}-${dd}`;
+      }
+
+      // Field name
+      let field = '';
+      if (fieldMatch) {
+        field = fieldMatch[1].replace(/\s+/g, ' ').trim();
+      }
+
+      // Determine bracket name
+      const bracketIdx = bracketLabels.length > 1 ? Math.floor(i / gamesPerBracket) : 0;
+      const bracketName = bracketLabels[bracketIdx] || bracketLabels[0] || 'Bracket';
+
+      // Determine round based on game number within bracket
+      const posInBracket = bracketLabels.length > 1 ? i % gamesPerBracket : i;
+      let round = '';
+      if (gamesPerBracket <= 1) round = 'Final';
+      else if (gamesPerBracket === 3) round = posInBracket === 0 ? 'Semifinal' : posInBracket === 1 ? 'Semifinal' : 'Final';
+      else if (gamesPerBracket === 4) round = posInBracket < 2 ? 'Semifinal' : posInBracket === 2 ? 'Semifinal' : 'Final';
+      else if (gamesPerBracket >= 7) round = posInBracket < 4 ? 'Quarterfinal' : posInBracket < 6 ? 'Semifinal' : 'Final';
+
+      games.push({
+        pgGameId,
+        pgEventId: eventId,
+        gameDate,
+        gameTime: timeMatch ? timeMatch[1].trim() : '',
+        field,
+        gameNumber: gmMatch ? parseInt(gmMatch[1]) : null,
+        bracketName,
+        round,
+        homeTeam: hm ? { name: hm[2].trim(), seed: parseInt(hm[1]), score: parseInt(hm[3]) } : null,
+        awayTeam: vm ? { name: vm[2].trim(), seed: parseInt(vm[1]), score: parseInt(vm[3]) } : null,
+      });
+    }
+
+    console.log(`[scraper] Found ${games.length} bracket games for event ${eventId} (${bracketLabels.join(', ')})`);
+    return games;
+  } catch (err) {
+    console.log(`[scraper] Bracket page error for event ${eventId}: ${err.message}`);
+    return [];
+  }
+}
+
+module.exports = { scrapeTournamentPage, scrapePitchingReport, scrapeTournamentSchedule, scrapeBracketGames };

@@ -233,6 +233,13 @@ function initSchema() {
   try { db.run("ALTER TABLE plate_appearances ADD COLUMN fielder TEXT"); } catch(e) {}
   try { db.run("ALTER TABLE plate_appearances ADD COLUMN runs_scored INTEGER DEFAULT 0"); } catch(e) {}
 
+  // Migration: add bracket fields to games
+  try { db.run("ALTER TABLE games ADD COLUMN game_type TEXT DEFAULT 'pool'"); } catch(e) {}
+  try { db.run("ALTER TABLE games ADD COLUMN bracket_name TEXT"); } catch(e) {}
+  try { db.run("ALTER TABLE games ADD COLUMN bracket_round TEXT"); } catch(e) {}
+  try { db.run("ALTER TABLE games ADD COLUMN home_seed INTEGER"); } catch(e) {}
+  try { db.run("ALTER TABLE games ADD COLUMN away_seed INTEGER"); } catch(e) {}
+
   // Migration: add batting order index tracking to game_scorebook
   try { db.run("ALTER TABLE game_scorebook ADD COLUMN home_batter_idx INTEGER DEFAULT 0"); } catch(e) {}
   try { db.run("ALTER TABLE game_scorebook ADD COLUMN away_batter_idx INTEGER DEFAULT 0"); } catch(e) {}
