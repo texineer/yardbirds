@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Routes, Route, Link, useLocation, useParams } from 'react-router-dom'
+import { Routes, Route, Link, useLocation, useParams, useNavigate } from 'react-router-dom'
 import { getTeamBySlug } from './api'
 import { useAuth } from './context/AuthContext'
 import Dashboard from './pages/Dashboard'
@@ -38,9 +38,11 @@ function App() {
 function TeamLayout() {
   const { slug } = useParams()
   const location = useLocation()
+  const navigate = useNavigate()
   const [team, setTeam] = useState(null)
   const [loading, setLoading] = useState(true)
-  const { user, hasTeamRole } = useAuth()
+  const [showTeamSwitcher, setShowTeamSwitcher] = useState(false)
+  const { user, roles, hasTeamRole } = useAuth()
 
   useEffect(() => {
     setLoading(true)
@@ -78,24 +80,64 @@ function TeamLayout() {
       {/* Header */}
       <header className="relative overflow-hidden" style={{ background: 'var(--navy)' }}>
         <div className="relative px-4 py-2.5 flex items-center justify-between">
-          <Link to={`/${slug}`} className="flex items-center gap-2.5 no-underline">
-            <img src={team.logo_url || '/yardbirds-logo.png'} alt="" className="w-9 h-9 object-contain" />
-            <div>
-              <span className="font-display text-xl text-white tracking-wide leading-none">{(team.name || slug).toUpperCase()}</span>
-              <img src="/bleacherbox_logo.png" alt="BleacherBox" className="h-3.5 object-contain" />
-            </div>
-          </Link>
-          <div className="flex items-center gap-2">
-            {user && (
-              <span className="text-[10px] font-semibold text-white opacity-50 hidden sm:inline">
-                {user.display_name || user.email}
-              </span>
-            )}
-            <Link to="/" className="text-[10px] font-bold uppercase tracking-wider no-underline px-2 py-1 rounded" style={{ color: 'var(--gold)', background: 'rgba(255,255,255,0.1)' }}>
-              All Teams
+          {/* Team name — tappable to switch if multiple teams */}
+          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+            <Link to={`/${slug}`} className="flex items-center gap-2.5 no-underline min-w-0 flex-1">
+              <img src={team.logo_url || '/yardbirds-logo.png'} alt="" className="w-9 h-9 object-contain flex-shrink-0" />
+              <div className="min-w-0">
+                <div className="flex items-center gap-1">
+                  <span className="font-display text-xl text-white tracking-wide leading-none truncate">{(team.name || slug).toUpperCase()}</span>
+                  {roles.length > 1 && (
+                    <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowTeamSwitcher(v => !v) }}
+                      className="flex-shrink-0">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2.5" strokeLinecap="round"
+                        style={{ transform: showTeamSwitcher ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
+                        <path d="M6 9l6 6 6-6"/>
+                      </svg>
+                    </button>
+                  )}
+                </div>
+                <img src="/bleacherbox_logo.png" alt="BleacherBox" className="h-3.5 object-contain" />
+              </div>
             </Link>
           </div>
+          {/* User */}
+          {user ? (
+            <Link to="/" className="flex items-center gap-1.5 no-underline px-2 py-1 rounded flex-shrink-0"
+              style={{ background: 'rgba(255,255,255,0.1)' }}>
+              <span className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold"
+                style={{ background: 'var(--gold)', color: 'var(--navy)' }}>
+                {(user.display_name || user.email).charAt(0).toUpperCase()}
+              </span>
+            </Link>
+          ) : (
+            <Link to="/login" className="text-[10px] font-bold uppercase tracking-wider no-underline px-3 py-1.5 rounded flex-shrink-0"
+              style={{ color: 'var(--navy)', background: 'var(--gold)' }}>
+              Sign In
+            </Link>
+          )}
         </div>
+
+        {/* Team switcher dropdown */}
+        {showTeamSwitcher && roles.length > 1 && (
+          <div className="px-4 pb-2">
+            <div className="rounded-lg overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
+              {roles.filter(r => r.slug !== slug).map(r => (
+                <button key={r.slug}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 text-left border-b last:border-b-0 transition-colors active:bg-white/10"
+                  style={{ borderColor: 'rgba(255,255,255,0.06)' }}
+                  onClick={() => { setShowTeamSwitcher(false); navigate(`/${r.slug}`) }}>
+                  <img src={r.logo_url || '/yardbirds-logo.png'} alt="" className="w-7 h-7 object-contain flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <span className="font-display text-sm text-white tracking-wide truncate block">{(r.team_name || r.slug).toUpperCase()}</span>
+                    {r.age_group && <span className="text-[9px] text-white/40">{r.age_group}</span>}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="stitch-line" />
       </header>
 
