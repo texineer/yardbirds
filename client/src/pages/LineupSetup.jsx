@@ -284,71 +284,93 @@ function DraggableLineup({ lineup, setLineup }) {
     setLineup(prev => prev.filter((_, i) => i !== idx))
   }
 
+  // Determine where the insertion indicator should appear
+  // The indicator shows BETWEEN rows — above the overIdx row if moving down, below if moving up
+  const showIndicatorAt = (dragIdx !== null && overIdx !== null && dragIdx !== overIdx) ? overIdx : null
+  const indicatorAbove = dragIdx !== null && overIdx !== null && overIdx < dragIdx
+
+  function InsertionIndicator() {
+    return (
+      <div className="flex items-center gap-2 py-0.5">
+        <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: 'var(--gold)' }} />
+        <div className="flex-1 h-[3px] rounded-full" style={{ background: 'var(--gold)' }} />
+        <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: 'var(--gold)' }} />
+      </div>
+    )
+  }
+
   return (
     <div ref={listRef}
-      className="space-y-1.5"
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
+      style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}
     >
       {lineup.map((entry, idx) => {
         const isDragging = dragIdx === idx
-        const isOver = overIdx === idx && dragIdx !== null && dragIdx !== idx
         return (
-          <div
-            key={`${entry.playerName}-${idx}`}
-            draggable
-            onDragStart={() => handleDragStart(idx)}
-            onDragOver={(e) => handleDragOver(idx, e)}
-            onDrop={handleDrop}
-            onDragEnd={handleDragEnd}
-            onTouchStart={(e) => handleTouchStart(idx, e)}
-            className="flex items-center gap-2 py-2.5 px-3 rounded-xl transition-all select-none"
-            style={{
-              background: isDragging ? 'var(--gold)' : isOver ? 'rgba(212,168,50,0.15)' : 'var(--cream)',
-              border: isOver ? '2px dashed var(--gold)' : '1px solid var(--border)',
-              opacity: isDragging ? 0.7 : 1,
-              cursor: 'grab',
-              touchAction: 'none',
-            }}
-          >
-            {/* Drag handle */}
-            <span className="text-base flex-shrink-0 select-none" style={{ color: 'var(--navy-muted)', cursor: 'grab' }}>
-              ≡
-            </span>
+          <div key={`${entry.playerName}-${idx}`}>
+            {/* Insertion indicator ABOVE this row */}
+            {showIndicatorAt === idx && indicatorAbove && <InsertionIndicator />}
 
-            {/* Order number */}
-            <span className="font-display text-lg w-6 text-center flex-shrink-0"
-              style={{ color: 'var(--navy)' }}>
-              {idx + 1}
-            </span>
+            <div
+              draggable
+              onDragStart={() => handleDragStart(idx)}
+              onDragOver={(e) => handleDragOver(idx, e)}
+              onDrop={handleDrop}
+              onDragEnd={handleDragEnd}
+              onTouchStart={(e) => handleTouchStart(idx, e)}
+              className="flex items-center gap-2 py-2.5 px-3 rounded-xl select-none"
+              style={{
+                background: isDragging ? 'rgba(212,168,50,0.25)' : 'var(--cream)',
+                border: '1px solid var(--border)',
+                opacity: isDragging ? 0.5 : 1,
+                cursor: 'grab',
+                touchAction: 'none',
+                transition: 'opacity 0.15s, background 0.15s',
+              }}
+            >
+              {/* Drag handle */}
+              <span className="text-lg flex-shrink-0 select-none" style={{ color: 'var(--navy-muted)', cursor: 'grab', lineHeight: 1 }}>
+                ⠿
+              </span>
 
-            {/* Player info */}
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-semibold truncate" style={{ color: 'var(--navy)' }}>
-                {entry.playerName}
+              {/* Order number */}
+              <span className="font-display text-lg w-6 text-center flex-shrink-0"
+                style={{ color: 'var(--navy)' }}>
+                {idx + 1}
+              </span>
+
+              {/* Player info */}
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-semibold truncate" style={{ color: 'var(--navy)' }}>
+                  {entry.playerName}
+                </div>
+                <div className="flex gap-2 items-center">
+                  {entry.jerseyNumber && (
+                    <span className="text-[10px] font-bold" style={{ color: 'var(--gold-dark, #b8891e)' }}>
+                      #{entry.jerseyNumber}
+                    </span>
+                  )}
+                  {entry.position && (
+                    <span className="text-[10px] font-bold" style={{ color: 'var(--navy-muted)' }}>
+                      {entry.position}
+                    </span>
+                  )}
+                </div>
               </div>
-              <div className="flex gap-2 items-center">
-                {entry.jerseyNumber && (
-                  <span className="text-[10px] font-bold" style={{ color: 'var(--gold-dark, #b8891e)' }}>
-                    #{entry.jerseyNumber}
-                  </span>
-                )}
-                {entry.position && (
-                  <span className="text-[10px] font-bold" style={{ color: 'var(--navy-muted)' }}>
-                    {entry.position}
-                  </span>
-                )}
-              </div>
+
+              {/* Remove */}
+              <button
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-xs active:scale-95 flex-shrink-0"
+                style={{ background: 'var(--loss-bg, #fdecea)', color: 'var(--loss)' }}
+                onClick={(e) => { e.stopPropagation(); removePlayer(idx) }}
+                onTouchEnd={(e) => { e.stopPropagation() }}>
+                ✕
+              </button>
             </div>
 
-            {/* Remove */}
-            <button
-              className="w-7 h-7 rounded-lg flex items-center justify-center text-xs active:scale-95 flex-shrink-0"
-              style={{ background: 'var(--loss-bg, #fdecea)', color: 'var(--loss)' }}
-              onClick={(e) => { e.stopPropagation(); removePlayer(idx) }}
-              onTouchEnd={(e) => { e.stopPropagation() }}>
-              ✕
-            </button>
+            {/* Insertion indicator BELOW this row */}
+            {showIndicatorAt === idx && !indicatorAbove && <InsertionIndicator />}
           </div>
         )
       })}
