@@ -104,9 +104,10 @@ async function scrapeFtEventSchedule(eventSlug, teamName) {
   }
 }
 
-// Scrape all registered teams from an FT event using schedule_ajax
+// Scrape all registered teams from an FT event teams page
+// Teams are in hidden <a> tags with /team/details/ URLs on the /teams page
 async function scrapeFtEventTeams(eventSlug) {
-  const url = `${FT_BASE}/events/${eventSlug}/schedule/all`;
+  const url = `${FT_BASE}/events/${eventSlug}/teams`;
   console.log(`[ft-scraper] Fetching event teams: ${url}`);
 
   try {
@@ -117,35 +118,32 @@ async function scrapeFtEventTeams(eventSlug) {
       viewport: { width: 1280, height: 800 },
     });
     const page = await context.newPage();
+    await page.goto(url, { waitUntil: 'load', timeout: 45000 });
+    await page.waitForTimeout(6000);
 
-    let scheduleJson = null;
-    page.on('response', async (response) => {
-      if (response.url().includes('schedule_ajax') && response.status() === 200) {
-        try { scheduleJson = await response.json(); } catch (e) {}
-      }
+    // Extract team names from all /team/details/ links in the DOM (even hidden ones)
+    const teams = await page.evaluate(() => {
+      const results = [];
+      document.querySelectorAll('a[href*="/team/details/"]').forEach(a => {
+        const name = a.textContent.trim();
+        const href = a.href;
+        if (name && name.length > 2) {
+          results.push({ name, href });
+        }
+      });
+      return results;
     });
 
-    await page.goto(url, { waitUntil: 'load', timeout: 45000 });
-    await page.waitForTimeout(8000);
     await context.close();
 
-    if (!scheduleJson?.schedules) {
-      console.log(`[ft-scraper] No schedule data for teams in ${eventSlug}`);
-      return [];
+    // Deduplicate and sort
+    const teamMap = new Map();
+    for (const t of teams) {
+      teamMap.set(t.name.toLowerCase(), { name: t.name, href: t.href });
     }
 
-    // Extract all unique team names from all games across all days
-    const teamSet = new Map();
-    for (const [dateKey, dayData] of Object.entries(scheduleJson.schedules)) {
-      if (!dayData.teams || !Array.isArray(dayData.teams)) continue;
-      for (const game of dayData.teams) {
-        if (game.team_name_1) teamSet.set(game.team_name_1.toLowerCase(), { name: game.team_name_1, division: game.division || '' });
-        if (game.team_name_2) teamSet.set(game.team_name_2.toLowerCase(), { name: game.team_name_2, division: game.division || '' });
-      }
-    }
-
-    const result = [...teamSet.values()].sort((a, b) => a.name.localeCompare(b.name));
-    console.log(`[ft-scraper] Found ${result.length} teams in event ${eventSlug}`);
+    const result = [...teamMap.values()].sort((a, b) => a.name.localeCompare(b.name));
+    console.log(`[ft-scraper] Found ${result.length} registered teams for ${eventSlug}`);
     return result;
   } catch (err) {
     console.log(`[ft-scraper] Error fetching event teams ${eventSlug}: ${err.message}`);
