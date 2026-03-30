@@ -172,15 +172,15 @@ export default function Dashboard({ orgId, teamId, slug }) {
                       </span>
                     )}
                   </div>
-                  {t.location && (
+                  {(t.location || t.pg_url) && (
                     <a href={t.source === 'ft' && t.pg_url ? `${t.pg_url}/venues` : t.pg_url || '#'}
                       target="_blank" rel="noopener"
-                      className="flex items-center gap-1 mt-1 no-underline"
-                      style={{ color: 'rgba(255,255,255,0.5)' }}>
+                      className="inline-flex items-center gap-1 mt-1 no-underline px-1.5 py-0.5 rounded"
+                      style={{ color: 'rgba(255,255,255,0.7)', background: 'rgba(255,255,255,0.08)' }}>
                       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                         <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>
                       </svg>
-                      <span className="text-[10px] truncate">{t.location}</span>
+                      <span className="text-[10px] font-semibold truncate">{t.location || 'Venues'}</span>
                     </a>
                   )}
                 </div>
