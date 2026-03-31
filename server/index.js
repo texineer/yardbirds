@@ -35,6 +35,9 @@ app.use(session({
 app.use('/api/auth', authRoutes);
 app.use('/api', apiRoutes);
 
+// Serve uploaded walkup audio files
+app.use('/walkups', express.static(path.join(__dirname, '..', 'data', 'walkups')));
+
 // Serve static frontend (production)
 const clientDist = path.join(__dirname, '..', 'client', 'dist');
 app.use(express.static(clientDist));

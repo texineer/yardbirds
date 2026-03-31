@@ -68,6 +68,26 @@ function initSchema() {
   `);
 
   db.run(`
+    CREATE TABLE IF NOT EXISTS player_walkup_songs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      pg_org_id INTEGER NOT NULL,
+      pg_team_id INTEGER NOT NULL,
+      player_name TEXT NOT NULL,
+      song_type TEXT NOT NULL CHECK(song_type IN ('upload', 'youtube')),
+      file_path TEXT,
+      youtube_url TEXT,
+      youtube_video_id TEXT,
+      start_seconds REAL NOT NULL DEFAULT 0,
+      end_seconds REAL NOT NULL DEFAULT 45,
+      song_title TEXT,
+      artist_name TEXT,
+      uploaded_by INTEGER REFERENCES users(id),
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(pg_org_id, pg_team_id, player_name)
+    )
+  `);
+
+  db.run(`
     CREATE TABLE IF NOT EXISTS tournaments (
       pg_event_id INTEGER PRIMARY KEY,
       name TEXT,

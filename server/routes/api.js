@@ -1,9 +1,37 @@
 const express = require('express');
 const router = express.Router();
+const path = require('path');
+const fs = require('fs');
+const multer = require('multer');
 const queries = require('../db/queries');
 const { scrapeAll } = require('../scrapers/run');
 const { scrapeTournamentSchedule } = require('../scrapers/tournament');
 const { requireAuth, requireTeamRole } = require('../middleware/auth');
+
+const dataDir = path.join(__dirname, '..', '..', 'data');
+
+const walkupStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = path.join(dataDir, 'walkups', req.params.orgId, req.params.teamId);
+    fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    const slug = decodeURIComponent(req.params.playerName).toLowerCase().replace(/[^a-z0-9]/g, '-');
+    cb(null, `${slug}${ext}`);
+  },
+});
+
+const uploadWalkup = multer({
+  storage: walkupStorage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (['.mp3', '.m4a'].includes(ext)) cb(null, true);
+    else cb(new Error('Only .mp3 and .m4a files are allowed'));
+  },
+});
 
 // GET /api/teams - list all registered teams
 router.get('/teams', async (req, res) => {
@@ -798,5 +826,102 @@ router.post('/scrape', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// ── Walkup Songs ──────────────────────────────────────────────────────────
+
+// GET /api/teams/:orgId/:teamId/players/:playerName/walkup-song (public)
+router.get('/teams/:orgId/:teamId/players/:playerName/walkup-song', async (req, res) => {
+  try {
+    const song = await queries.getWalkupSong(
+      parseInt(req.params.orgId),
+      parseInt(req.params.teamId),
+      decodeURIComponent(req.params.playerName)
+    );
+    res.json(song || null);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/teams/:orgId/:teamId/players/:playerName/walkup-song/upload
+router.post('/teams/:orgId/:teamId/players/:playerName/walkup-song/upload',
+  requireTeamRole(['admin', 'scorekeeper']),
+  uploadWalkup.single('file'),
+  async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+      const { orgId, teamId, playerName } = req.params;
+      const filePath = `${orgId}/${teamId}/${req.file.filename}`;
+      await queries.upsertWalkupSong({
+        pgOrgId: parseInt(orgId),
+        pgTeamId: parseInt(teamId),
+        playerName: decodeURIComponent(playerName),
+        songType: 'upload',
+        filePath,
+        youtubeUrl: null,
+        youtubeVideoId: null,
+        startSeconds: parseFloat(req.body.startSeconds) || 0,
+        endSeconds: parseFloat(req.body.endSeconds) || 45,
+        songTitle: req.body.title || null,
+        artistName: req.body.artist || null,
+        uploadedBy: req.user.id,
+      });
+      res.json({ status: 'ok', filePath });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  }
+);
+
+// POST /api/teams/:orgId/:teamId/players/:playerName/walkup-song/youtube
+router.post('/teams/:orgId/:teamId/players/:playerName/walkup-song/youtube',
+  requireTeamRole(['admin', 'scorekeeper']),
+  async (req, res) => {
+    try {
+      const { orgId, teamId, playerName } = req.params;
+      const { youtubeUrl, startSeconds, endSeconds, title, artist } = req.body;
+      if (!youtubeUrl) return res.status(400).json({ error: 'youtubeUrl required' });
+      const videoId = youtubeUrl.match(/(?:watch\?v=|youtu\.be\/)([^&\s]+)/)?.[1];
+      if (!videoId) return res.status(400).json({ error: 'Invalid YouTube URL' });
+      await queries.upsertWalkupSong({
+        pgOrgId: parseInt(orgId),
+        pgTeamId: parseInt(teamId),
+        playerName: decodeURIComponent(playerName),
+        songType: 'youtube',
+        filePath: null,
+        youtubeUrl,
+        youtubeVideoId: videoId,
+        startSeconds: parseFloat(startSeconds) || 0,
+        endSeconds: parseFloat(endSeconds) || 45,
+        songTitle: title || null,
+        artistName: artist || null,
+        uploadedBy: req.user.id,
+      });
+      res.json({ status: 'ok', videoId });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  }
+);
+
+// DELETE /api/teams/:orgId/:teamId/players/:playerName/walkup-song
+router.delete('/teams/:orgId/:teamId/players/:playerName/walkup-song',
+  requireTeamRole(['admin', 'scorekeeper']),
+  async (req, res) => {
+    try {
+      const { orgId, teamId, playerName } = req.params;
+      const name = decodeURIComponent(playerName);
+      const song = await queries.getWalkupSong(parseInt(orgId), parseInt(teamId), name);
+      if (song?.song_type === 'upload' && song?.file_path) {
+        const fullPath = path.join(dataDir, 'walkups', song.file_path);
+        if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
+      }
+      await queries.deleteWalkupSong(parseInt(orgId), parseInt(teamId), name);
+      res.json({ status: 'ok' });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  }
+);
 
 module.exports = router;

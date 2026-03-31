@@ -223,6 +223,32 @@ export function endScorebookGame(gameId, body) {
   return mutate('POST', `/games/${gameId}/scorebook/end`, body);
 }
 
+// ── Walkup Songs ──────────────────────────────────────────────────────────────
+
+export function getWalkupSong(orgId, teamId, playerName) {
+  return fetchJson(`/teams/${orgId}/${teamId}/players/${encodeURIComponent(playerName)}/walkup-song`);
+}
+
+export function saveYoutubeWalkup(orgId, teamId, playerName, data) {
+  return authFetch('POST', `/teams/${orgId}/${teamId}/players/${encodeURIComponent(playerName)}/walkup-song/youtube`, data);
+}
+
+export function uploadWalkupSong(orgId, teamId, playerName, formData) {
+  return fetch(`${API_BASE}/teams/${orgId}/${teamId}/players/${encodeURIComponent(playerName)}/walkup-song/upload`, {
+    method: 'POST',
+    credentials: 'include',
+    body: formData,
+  }).then(async r => {
+    const data = await r.json().catch(() => ({ error: r.statusText }));
+    if (!r.ok) throw new Error(data.error || `API error: ${r.status}`);
+    return data;
+  });
+}
+
+export function deleteWalkupSong(orgId, teamId, playerName) {
+  return authFetch('DELETE', `/teams/${orgId}/${teamId}/players/${encodeURIComponent(playerName)}/walkup-song`);
+}
+
 // ── Register team (auth required) ─────────────────────────────────────────────
 
 export function registerTeam(body) {

@@ -548,6 +548,31 @@ async function getHalfInningStats(gameId, inning, half) {
   `, [gameId, inning, half]);
 }
 
+// ── Walkup Songs ──────────────────────────────────────────────────────────
+
+async function getWalkupSong(orgId, teamId, playerName) {
+  const db = await getDb();
+  return get(db, 'SELECT * FROM player_walkup_songs WHERE pg_org_id = ? AND pg_team_id = ? AND player_name = ?', [orgId, teamId, playerName]);
+}
+
+async function upsertWalkupSong({ pgOrgId, pgTeamId, playerName, songType, filePath, youtubeUrl, youtubeVideoId, startSeconds, endSeconds, songTitle, artistName, uploadedBy }) {
+  const db = await getDb();
+  run(db, `
+    INSERT INTO player_walkup_songs (pg_org_id, pg_team_id, player_name, song_type, file_path, youtube_url, youtube_video_id, start_seconds, end_seconds, song_title, artist_name, uploaded_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(pg_org_id, pg_team_id, player_name) DO UPDATE SET
+      song_type=excluded.song_type, file_path=excluded.file_path, youtube_url=excluded.youtube_url,
+      youtube_video_id=excluded.youtube_video_id, start_seconds=excluded.start_seconds,
+      end_seconds=excluded.end_seconds, song_title=excluded.song_title, artist_name=excluded.artist_name,
+      uploaded_by=excluded.uploaded_by, created_at=datetime('now')
+  `, [pgOrgId, pgTeamId, playerName, songType, filePath ?? null, youtubeUrl ?? null, youtubeVideoId ?? null, startSeconds, endSeconds, songTitle ?? null, artistName ?? null, uploadedBy ?? null]);
+}
+
+async function deleteWalkupSong(orgId, teamId, playerName) {
+  const db = await getDb();
+  run(db, 'DELETE FROM player_walkup_songs WHERE pg_org_id = ? AND pg_team_id = ? AND player_name = ?', [orgId, teamId, playerName]);
+}
+
 // ── Users & Roles ─────────────────────────────────────────────────────────
 
 async function createUser({ email, passwordHash, displayName }) {
@@ -637,4 +662,6 @@ module.exports = {
   // Auth
   createUser, getUserByEmail, getUserById, getUserTeamRoles, getUserRoleForTeam,
   setUserTeamRole, removeUserTeamRole, getTeamMembers, getTeamFromGameId,
+  // Walkup Songs
+  getWalkupSong, upsertWalkupSong, deleteWalkupSong,
 };
