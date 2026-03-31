@@ -81,28 +81,10 @@ function TeamLayout() {
     <>
       {/* Header */}
       <header className="relative overflow-hidden" style={{ background: 'var(--navy)' }}>
-        {/* Top bar: logo centered */}
-        <div className="flex justify-center py-2">
-          <Link to={`/${slug}`} className="no-underline">
-            <img src="/bleacherbox_logo_sm.png" alt="BleacherBox" className="h-10 object-contain" />
+        <div className="relative px-4 py-3 flex items-center justify-between">
+          <Link to={`/${slug}`} className="no-underline flex-shrink-0">
+            <img src="/bleacherbox_logo_sm.png" alt="BleacherBox" className="h-12 object-contain" />
           </Link>
-        </div>
-        {/* Bottom bar: team name + user */}
-        <div className="relative px-4 pb-2.5 flex items-center justify-between">
-          <div className="flex items-center gap-1.5 min-w-0 flex-1">
-            <Link to={`/${slug}`} className="flex items-center gap-1.5 no-underline min-w-0">
-              <img src={team.logo_url || '/yardbirds-logo.png'} alt="" className="w-6 h-6 object-contain flex-shrink-0" />
-              <span className="text-sm font-semibold text-white truncate">{team.name || slug}</span>
-            </Link>
-            {roles.length > 1 && (
-              <button onClick={() => setShowTeamSwitcher(v => !v)} className="flex-shrink-0">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2.5" strokeLinecap="round"
-                  style={{ transform: showTeamSwitcher ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
-                  <path d="M6 9l6 6 6-6"/>
-                </svg>
-              </button>
-            )}
-          </div>
           {/* User avatar → account page */}
           {user ? (
             <Link to="/account" className="flex items-center gap-1.5 no-underline px-2 py-1 rounded flex-shrink-0"
