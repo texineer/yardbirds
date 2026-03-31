@@ -340,6 +340,9 @@ function initSchema() {
   // Migration: add global admin and contact email fields to users
   try { db.run("ALTER TABLE users ADD COLUMN is_global_admin INTEGER NOT NULL DEFAULT 0"); } catch(e) {}
   try { db.run("ALTER TABLE users ADD COLUMN contact_email TEXT"); } catch(e) {}
+
+  // Migration: add baseball card image path to players
+  try { db.run("ALTER TABLE players ADD COLUMN card_image_path TEXT"); } catch(e) {}
 }
 
 function saveDb() {

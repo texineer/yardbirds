@@ -38,6 +38,9 @@ app.use('/api', apiRoutes);
 // Serve uploaded walkup audio files
 app.use('/walkups', express.static(path.join(__dirname, '..', 'data', 'walkups')));
 
+// Serve baseball card images
+app.use('/cards', express.static(path.join(__dirname, '..', 'data', 'cards')));
+
 // Serve static frontend (production)
 const clientDist = path.join(__dirname, '..', 'client', 'dist');
 app.use(express.static(clientDist));

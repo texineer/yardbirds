@@ -85,6 +85,12 @@ async function getPlayers(orgId, teamId) {
   return all(db, 'SELECT * FROM players WHERE pg_org_id = ? AND pg_team_id = ? ORDER BY name', [orgId, teamId]);
 }
 
+async function setPlayerCardPath(orgId, teamId, name, cardPath) {
+  const db = await getDb();
+  run(db, 'UPDATE players SET card_image_path = ? WHERE pg_org_id = ? AND pg_team_id = ? AND name = ?', [cardPath, orgId, teamId, name]);
+  saveDb();
+}
+
 // Tournaments
 async function upsertTournament({ pgEventId, name, startDate, endDate, location, pgUrl }) {
   const db = await getDb();
@@ -742,7 +748,7 @@ async function getTeamFromGameId(gameId) {
 
 module.exports = {
   upsertTeam, getTeam, getTeamBySlug, getAllTeams, registerTeam, searchTeams,
-  upsertPlayer, getPlayers,
+  upsertPlayer, getPlayers, setPlayerCardPath,
   upsertTournament, linkTeamTournament, getTeamTournaments, getTournament,
   upsertGame, createManualGame, getTeamGames, getGame, getGameByPgId, getTournamentGames,
   insertPitchCount, clearPitchCounts, clearTournamentPitchCounts, getGamePitchCounts, getTournamentPitchCounts, getTournamentPitcherTotals,

@@ -1083,4 +1083,65 @@ router.delete('/teams/:orgId/:teamId/players/:playerName/walkup-song',
   }
 );
 
+// ── Baseball Cards ─────────────────────────────────────────────────────────────
+
+const cardStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = path.join(dataDir, 'cards', req.params.orgId, req.params.teamId);
+    fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    const slug = decodeURIComponent(req.params.playerName).toLowerCase().replace(/[^a-z0-9]/g, '-');
+    cb(null, `${slug}.png`);
+  },
+});
+
+const uploadCard = multer({
+  storage: cardStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === 'image/png') cb(null, true);
+    else cb(new Error('Only PNG files are allowed'));
+  },
+});
+
+// POST /api/teams/:orgId/:teamId/players/:playerName/baseball-card
+router.post('/teams/:orgId/:teamId/players/:playerName/baseball-card',
+  requireAuth,
+  uploadCard.single('file'),
+  async (req, res) => {
+    try {
+      const { orgId, teamId, playerName } = req.params;
+      const name = decodeURIComponent(playerName);
+      const cardPath = `${orgId}/${teamId}/${req.file.filename}`;
+      await queries.setPlayerCardPath(parseInt(orgId), parseInt(teamId), name, cardPath);
+      res.json({ cardUrl: `/cards/${cardPath}` });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  }
+);
+
+// DELETE /api/teams/:orgId/:teamId/players/:playerName/baseball-card
+router.delete('/teams/:orgId/:teamId/players/:playerName/baseball-card',
+  requireAuth,
+  async (req, res) => {
+    try {
+      const { orgId, teamId, playerName } = req.params;
+      const name = decodeURIComponent(playerName);
+      const players = await queries.getPlayers(parseInt(orgId), parseInt(teamId));
+      const player = players.find(p => p.name === name);
+      if (player?.card_image_path) {
+        const fullPath = path.join(dataDir, 'cards', player.card_image_path);
+        if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
+      }
+      await queries.setPlayerCardPath(parseInt(orgId), parseInt(teamId), name, null);
+      res.json({ status: 'ok' });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  }
+);
+
 module.exports = router;
