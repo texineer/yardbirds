@@ -124,6 +124,7 @@ async function upsertGame({ pgGameId, pgEventId, teamOrgId, teamId, opponentName
     INSERT INTO games (pg_game_id, pg_event_id, team_org_id, team_id, opponent_name, opponent_org_id, opponent_team_id, game_date, game_time, field, score_us, score_them, result, pg_box_url, pg_recap_url)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(pg_game_id) DO UPDATE SET
+      team_org_id=excluded.team_org_id, team_id=excluded.team_id,
       opponent_name=excluded.opponent_name, game_date=excluded.game_date, game_time=excluded.game_time,
       field=excluded.field, score_us=excluded.score_us, score_them=excluded.score_them,
       result=excluded.result, pg_box_url=excluded.pg_box_url, pg_recap_url=excluded.pg_recap_url
