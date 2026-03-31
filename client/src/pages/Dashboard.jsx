@@ -219,24 +219,6 @@ export default function Dashboard({ orgId, teamId, slug }) {
                       Updated {formatTimeAgo(t.last_scraped)}
                     </div>
                   )}
-                  {isPast && !isExpanded && gameResults.length > 0 && (
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-[10px] font-bold" style={{ color: 'var(--gold)' }}>{wCount}W-{lCount}L</span>
-                      <span className="text-[10px] text-white/40">{gameResults.length} games</span>
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2.5" strokeLinecap="round">
-                        <path d="M6 9l6 6 6-6"/>
-                      </svg>
-                    </div>
-                  )}
-                  {isPast && isExpanded && (
-                    <div className="flex items-center gap-1 mt-1">
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2.5" strokeLinecap="round"
-                        style={{ transform: 'rotate(180deg)' }}>
-                        <path d="M6 9l6 6 6-6"/>
-                      </svg>
-                      <span className="text-[10px] text-white/40">Collapse</span>
-                    </div>
-                  )}
                 </div>
                 <div className="flex flex-col gap-1 ml-2 flex-shrink-0">
                   {/* Refresh this tournament */}
@@ -282,6 +264,27 @@ export default function Dashboard({ orgId, teamId, slug }) {
                 </div>
               </div>
             </div>
+
+            {/* Expand/collapse bar for past tournaments */}
+            {isPast && gameResults.length > 0 && (
+              <button onClick={toggleExpand}
+                className="w-full flex items-center justify-between px-4 py-2.5 border border-t-0 active:bg-[var(--sky)] transition-colors"
+                style={{ borderColor: 'var(--border)', background: isExpanded ? 'var(--sky)' : 'white', borderRadius: isExpanded ? 0 : '0 0 12px 12px' }}>
+                <div className="flex items-center gap-3">
+                  <span className="font-display text-lg" style={{ color: 'var(--navy)' }}>{wCount}W - {lCount}L</span>
+                  <span className="text-[10px] font-semibold" style={{ color: 'var(--navy-muted)' }}>{gameResults.length} games</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--navy-muted)' }}>
+                    {isExpanded ? 'Hide' : 'Show'} Games
+                  </span>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--navy-muted)" strokeWidth="2.5" strokeLinecap="round"
+                    style={{ transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
+                    <path d="M6 9l6 6 6-6"/>
+                  </svg>
+                </div>
+              </button>
+            )}
 
             {/* Games or Teams list (collapsible for past tournaments) */}
             {isExpanded && (
