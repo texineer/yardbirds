@@ -88,11 +88,16 @@ export default function WalkupSongManager({ orgId, teamId, playerName, playerNum
       stopTimerRef.current = setTimeout(stopPlayback, duration)
       audio.onended = stopPlayback
     } else {
-      // If already preloaded (autoplay=0), flip to autoplay=1 — video is buffered, starts instantly
-      if (iframeRef.current?.src?.includes(song.youtube_video_id)) {
-        iframeRef.current.src = ytSrc(1)
-      } else {
-        if (iframeRef.current) iframeRef.current.src = ytSrc(1)
+      if (iframeRef.current) {
+        if (iframeRef.current.src?.includes(song.youtube_video_id)) {
+          // Already preloaded — send postMessage to play without reloading src
+          // (avoids iOS autoplay block on programmatic src changes)
+          iframeRef.current.contentWindow?.postMessage(
+            JSON.stringify({ event: 'command', func: 'playVideo', args: [] }), '*'
+          )
+        } else {
+          iframeRef.current.src = ytSrc(1)
+        }
       }
       const duration = (song.end_seconds - song.start_seconds) * 1000
       stopTimerRef.current = setTimeout(stopPlayback, duration)

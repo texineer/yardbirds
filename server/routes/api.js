@@ -25,7 +25,8 @@ async function generateAnnouncement(orgId, teamId, playerName, playerNumber) {
       {
         text,
         model_id: 'eleven_turbo_v2_5',
-        voice_settings: { stability: 0.45, similarity_boost: 0.75, style: 0.60, use_speaker_boost: true },
+        voice_settings: { stability: 0.55, similarity_boost: 0.75, style: 0.50, use_speaker_boost: true },
+        speed: 0.82,
       },
       {
         headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json' },
