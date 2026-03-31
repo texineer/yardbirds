@@ -849,18 +849,18 @@ router.post('/scrape', async (req, res) => {
 // ── Soundboard + Playlist ─────────────────────────────────────────────────
 
 const SOUNDBOARD_DEFAULTS = [
-  { key: 'mound_visit', label: 'Mound Visit', emoji: '⏰', hint: 'Search: "Jeopardy think music"',               suggestedStart: 0,  suggestedEnd: 20 },
-  { key: 'bad_call',    label: 'Bad Call',     emoji: '🙈', hint: 'Search: "3 blind mice nursery rhyme"',        suggestedStart: 0,  suggestedEnd: 12 },
-  { key: 'wah_wah',     label: 'Wah Wah',      emoji: '😢', hint: 'Search: "sad trombone sound effect"',         suggestedStart: 0,  suggestedEnd: 5  },
-  { key: 'charge',      label: 'CHARGE!',       emoji: '🎺', hint: 'Search: "charge bugle baseball stadium"',    suggestedStart: 0,  suggestedEnd: 5  },
-  { key: 'strikeout',   label: 'Strikeout',     emoji: '🔥', hint: 'Search: "strikeout sound effect baseball"',  suggestedStart: 0,  suggestedEnd: 5  },
-  { key: 'walk',        label: 'Walk',          emoji: '🚶', hint: 'Search: "na na hey hey kiss him goodbye"',   suggestedStart: 0,  suggestedEnd: 10 },
-  { key: 'rally',       label: 'RALLY!',        emoji: '⚡', hint: 'Search: "we will rock you queen stomp"',    suggestedStart: 0,  suggestedEnd: 18 },
-  { key: 'ymca',        label: 'YMCA',          emoji: '🕺', hint: 'Search: "YMCA village people chorus"',      suggestedStart: 46, suggestedEnd: 65 },
-  { key: 'homerun',     label: 'Home Run!',     emoji: '💥', hint: 'Search: "Sweet Caroline Neil Diamond"',     suggestedStart: 62, suggestedEnd: 80 },
-  { key: 'seventh',     label: '7th Inning',    emoji: '⚾', hint: 'Search: "take me out to the ballgame"',     suggestedStart: 0,  suggestedEnd: 30 },
-  { key: 'circus',      label: 'Clown Show',    emoji: '🎪', hint: 'Search: "circus calliope clown music"',     suggestedStart: 0,  suggestedEnd: 10 },
-  { key: 'walk_off',    label: 'Walk-Off!',     emoji: '🏆', hint: 'Search: "eye of the tiger survivor intro"', suggestedStart: 0,  suggestedEnd: 20 },
+  { key: 'mound_visit', label: 'Mound Visit', emoji: '⏰', hint: 'Search: "Jeopardy think music"',               youtube_video_id: 'vWuQVpBeqLs', suggestedStart: 0,  suggestedEnd: 30 },
+  { key: 'bad_call',    label: 'Bad Call',     emoji: '🙈', hint: 'Search: "3 blind mice nursery rhyme"',        youtube_video_id: null,          suggestedStart: 0,  suggestedEnd: 12 },
+  { key: 'wah_wah',     label: 'Wah Wah',      emoji: '😢', hint: 'Search: "sad trombone sound effect"',         youtube_video_id: 'CQeezCdF4mk', suggestedStart: 0,  suggestedEnd: 4  },
+  { key: 'charge',      label: 'CHARGE!',       emoji: '🎺', hint: 'Search: "charge bugle baseball stadium"',    youtube_video_id: null,          suggestedStart: 0,  suggestedEnd: 5  },
+  { key: 'strikeout',   label: 'Strikeout',     emoji: '🔥', hint: 'Search: "strikeout sound effect baseball"',  youtube_video_id: null,          suggestedStart: 0,  suggestedEnd: 5  },
+  { key: 'walk',        label: 'Walk',          emoji: '🚶', hint: 'Search: "na na hey hey kiss him goodbye"',   youtube_video_id: 'jsaTElBljOE', suggestedStart: 0,  suggestedEnd: 15 },
+  { key: 'rally',       label: 'RALLY!',        emoji: '⚡', hint: 'Search: "we will rock you queen stomp"',    youtube_video_id: '-tJYN-eG1zk', suggestedStart: 0,  suggestedEnd: 8  },
+  { key: 'ymca',        label: 'YMCA',          emoji: '🕺', hint: 'Search: "YMCA village people chorus"',      youtube_video_id: 'CS9OO0S5w2k', suggestedStart: 46, suggestedEnd: 65 },
+  { key: 'homerun',     label: 'Home Run!',     emoji: '💥', hint: 'Search: "Sweet Caroline Neil Diamond"',     youtube_video_id: '1vhFnTjia_I', suggestedStart: 62, suggestedEnd: 77 },
+  { key: 'seventh',     label: '7th Inning',    emoji: '⚾', hint: 'Search: "take me out to the ballgame"',     youtube_video_id: null,          suggestedStart: 0,  suggestedEnd: 30 },
+  { key: 'circus',      label: 'Clown Show',    emoji: '🎪', hint: 'Search: "circus calliope clown music"',     youtube_video_id: null,          suggestedStart: 0,  suggestedEnd: 10 },
+  { key: 'walk_off',    label: 'Walk-Off!',     emoji: '🏆', hint: 'Search: "eye of the tiger survivor intro"', youtube_video_id: 'btPJPFnesV4', suggestedStart: 0,  suggestedEnd: 6  },
 ];
 
 // GET /api/teams/:orgId/:teamId/soundboard (public)

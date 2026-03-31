@@ -1,26 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { getSoundboard, saveSoundboardButton, getPlaylist, addPlaylistSong, updatePlaylistSong, removePlaylistSong, getWalkupSong } from '../api'
+import { getSoundboard, saveSoundboardButton, getPlaylist, addPlaylistSong, updatePlaylistSong, removePlaylistSong } from '../api'
 import { getTeamBySlug } from '../api'
 import { useParams } from 'react-router-dom'
 import WalkupSongManager from '../components/WalkupSongManager'
 import LoadingSpinner from '../components/LoadingSpinner'
-
-// Mirror of server SOUNDBOARD_DEFAULTS for hint text
-const SOUNDBOARD_DEFAULTS = [
-  { key: 'mound_visit', label: 'Mound Visit', emoji: '⏰', hint: 'Search: "Jeopardy think music"' },
-  { key: 'bad_call',    label: 'Bad Call',     emoji: '🙈', hint: 'Search: "3 blind mice nursery rhyme"' },
-  { key: 'wah_wah',     label: 'Wah Wah',      emoji: '😢', hint: 'Search: "sad trombone sound effect"' },
-  { key: 'charge',      label: 'CHARGE!',       emoji: '🎺', hint: 'Search: "charge bugle baseball stadium"' },
-  { key: 'strikeout',   label: 'Strikeout',     emoji: '🔥', hint: 'Search: "strikeout sound effect baseball"' },
-  { key: 'walk',        label: 'Walk',          emoji: '🚶', hint: 'Search: "na na hey hey kiss him goodbye"' },
-  { key: 'rally',       label: 'RALLY!',        emoji: '⚡', hint: 'Search: "we will rock you queen stomp"' },
-  { key: 'ymca',        label: 'YMCA',          emoji: '🕺', hint: 'Search: "YMCA village people chorus"' },
-  { key: 'homerun',     label: 'Home Run!',     emoji: '💥', hint: 'Search: "Sweet Caroline Neil Diamond"' },
-  { key: 'seventh',     label: '7th Inning',    emoji: '⚾', hint: 'Search: "take me out to the ballgame"' },
-  { key: 'circus',      label: 'Clown Show',    emoji: '🎪', hint: 'Search: "circus calliope clown music"' },
-  { key: 'walk_off',    label: 'Walk-Off!',     emoji: '🏆', hint: 'Search: "eye of the tiger survivor intro"' },
-]
 
 export default function BleacherBoxDJ() {
   const { slug } = useParams()
@@ -30,8 +14,10 @@ export default function BleacherBoxDJ() {
   const [soundboard, setSoundboard] = useState([])
   const [playlist, setPlaylist] = useState([])
   const [editingSoundboard, setEditingSoundboard] = useState(false)
-  const [playingKey, setPlayingKey] = useState(null) // soundboard button key
+  const [playingKey, setPlayingKey] = useState(null)
   const [playingPlaylistId, setPlayingPlaylistId] = useState(null)
+  const [showSoundboard, setShowSoundboard] = useState(false)
+  const [showPlaylist, setShowPlaylist] = useState(false)
   const iframeRef = useRef(null)
   const stopTimerRef = useRef(null)
 
@@ -92,6 +78,8 @@ export default function BleacherBoxDJ() {
     </div>
   )
 
+  const configuredCount = soundboard.filter(b => !!b.youtube_video_id).length
+
   return (
     <div className="space-y-6 pb-8">
       {/* Hidden YouTube iframe — shared by all players */}
@@ -113,87 +101,126 @@ export default function BleacherBoxDJ() {
 
       {/* ── SOUNDBOARD ── */}
       <section>
-        <div className="flex items-center justify-between mb-2">
+        <button
+          className="flex items-center justify-between w-full mb-2"
+          onClick={() => { setShowSoundboard(s => !s); if (showSoundboard) setEditingSoundboard(false) }}
+        >
           <div className="section-label">SOUNDBOARD</div>
-          {canEdit && (
-            <button
-              onClick={() => setEditingSoundboard(e => !e)}
-              className="text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded"
-              style={{ background: editingSoundboard ? 'var(--gold)' : 'var(--powder-pale)', color: 'var(--navy)' }}
-            >
-              {editingSoundboard ? 'Done' : 'Edit'}
-            </button>
-          )}
-        </div>
+          <div className="flex items-center gap-2">
+            {!showSoundboard && (
+              <span className="text-[10px]" style={{ color: 'var(--navy-muted)' }}>
+                {configuredCount}/{soundboard.length} ready
+              </span>
+            )}
+            <span className="text-[11px] font-bold" style={{ color: 'var(--navy-muted)' }}>
+              {showSoundboard ? '▲' : '▼'}
+            </span>
+          </div>
+        </button>
 
-        <div className="grid grid-cols-3 gap-2">
-          {soundboard.map(btn => (
-            <SoundboardButton
-              key={btn.button_key}
-              btn={btn}
-              isPlaying={playingKey === btn.button_key}
-              editing={editingSoundboard}
-              onTap={() => handleSoundboardTap(btn)}
-              onSave={async (url, start, end) => {
-                await saveSoundboardButton(team.pg_org_id, team.pg_team_id, btn.button_key, { youtubeUrl: url, startSeconds: start, endSeconds: end })
-                const updated = await getSoundboard(team.pg_org_id, team.pg_team_id)
-                setSoundboard(updated)
-              }}
-            />
-          ))}
-        </div>
+        {showSoundboard && (
+          <>
+            {canEdit && (
+              <div className="flex justify-end mb-2">
+                <button
+                  onClick={() => setEditingSoundboard(e => !e)}
+                  className="text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded"
+                  style={{ background: editingSoundboard ? 'var(--gold)' : 'var(--powder-pale)', color: 'var(--navy)' }}
+                >
+                  {editingSoundboard ? 'Done' : 'Edit'}
+                </button>
+              </div>
+            )}
+            <div className="grid grid-cols-3 gap-2">
+              {soundboard.map(btn => (
+                <SoundboardButton
+                  key={btn.button_key}
+                  btn={btn}
+                  isPlaying={playingKey === btn.button_key}
+                  editing={editingSoundboard}
+                  onTap={() => handleSoundboardTap(btn)}
+                  onSave={async (url, start, end) => {
+                    await saveSoundboardButton(team.pg_org_id, team.pg_team_id, btn.button_key, { youtubeUrl: url, startSeconds: start, endSeconds: end })
+                    const updated = await getSoundboard(team.pg_org_id, team.pg_team_id)
+                    setSoundboard(updated)
+                  }}
+                />
+              ))}
+            </div>
+          </>
+        )}
       </section>
 
       {/* ── BETWEEN INNINGS ── */}
       <section>
-        <div className="flex items-center justify-between mb-2">
+        <button
+          className="flex items-center justify-between w-full mb-2"
+          onClick={() => setShowPlaylist(s => !s)}
+        >
           <div className="section-label">BETWEEN INNINGS</div>
-          {canEdit && (
-            <AddPlaylistSongButton
-              onAdd={async data => {
-                await addPlaylistSong(team.pg_org_id, team.pg_team_id, data)
-                const updated = await getPlaylist(team.pg_org_id, team.pg_team_id)
-                setPlaylist(updated)
-              }}
-            />
-          )}
-        </div>
-
-        {playlist.length === 0 ? (
-          <div className="card p-4 text-center">
-            <div className="text-sm font-semibold mb-1" style={{ color: 'var(--navy-muted)' }}>No songs yet</div>
-            {canEdit ? (
-              <p className="text-xs" style={{ color: 'var(--navy-muted)' }}>
-                Tap + Add Song to build your between-innings playlist.<br />
-                Try: Shipping Up to Boston, Zombie Nation, Thunderstruck, Seven Nation Army
-              </p>
-            ) : (
-              <p className="text-xs" style={{ color: 'var(--navy-muted)' }}>Ask an admin to add songs.</p>
+          <div className="flex items-center gap-2">
+            {!showPlaylist && (
+              <span className="text-[10px]" style={{ color: 'var(--navy-muted)' }}>
+                {playlist.length === 0 ? 'no songs yet' : `${playlist.length} song${playlist.length !== 1 ? 's' : ''}`}
+              </span>
             )}
+            <span className="text-[11px] font-bold" style={{ color: 'var(--navy-muted)' }}>
+              {showPlaylist ? '▲' : '▼'}
+            </span>
           </div>
-        ) : (
-          <div className="card overflow-hidden divide-y" style={{ borderColor: 'var(--border)' }}>
-            {playlist.map(song => (
-              <PlaylistRow
-                key={song.id}
-                song={song}
-                isPlaying={playingPlaylistId === song.id}
-                canEdit={canEdit}
-                onPlay={() => handlePlaylistTap(song)}
-                onSave={async data => {
-                  await updatePlaylistSong(team.pg_org_id, team.pg_team_id, song.id, data)
-                  const updated = await getPlaylist(team.pg_org_id, team.pg_team_id)
-                  setPlaylist(updated)
-                }}
-                onDelete={async () => {
-                  await removePlaylistSong(team.pg_org_id, team.pg_team_id, song.id)
-                  const updated = await getPlaylist(team.pg_org_id, team.pg_team_id)
-                  setPlaylist(updated)
-                  if (playingPlaylistId === song.id) stopAll()
-                }}
-              />
-            ))}
-          </div>
+        </button>
+
+        {showPlaylist && (
+          <>
+            {canEdit && (
+              <div className="flex justify-end mb-2">
+                <AddPlaylistSongButton
+                  onAdd={async data => {
+                    await addPlaylistSong(team.pg_org_id, team.pg_team_id, data)
+                    const updated = await getPlaylist(team.pg_org_id, team.pg_team_id)
+                    setPlaylist(updated)
+                  }}
+                />
+              </div>
+            )}
+
+            {playlist.length === 0 ? (
+              <div className="card p-4 text-center">
+                <div className="text-sm font-semibold mb-1" style={{ color: 'var(--navy-muted)' }}>No songs yet</div>
+                {canEdit ? (
+                  <p className="text-xs" style={{ color: 'var(--navy-muted)' }}>
+                    Tap + Add Song to build your between-innings playlist.<br />
+                    Try: Shipping Up to Boston, Zombie Nation, Thunderstruck, Seven Nation Army
+                  </p>
+                ) : (
+                  <p className="text-xs" style={{ color: 'var(--navy-muted)' }}>Ask an admin to add songs.</p>
+                )}
+              </div>
+            ) : (
+              <div className="card overflow-hidden divide-y" style={{ borderColor: 'var(--border)' }}>
+                {playlist.map(song => (
+                  <PlaylistRow
+                    key={song.id}
+                    song={song}
+                    isPlaying={playingPlaylistId === song.id}
+                    canEdit={canEdit}
+                    onPlay={() => handlePlaylistTap(song)}
+                    onSave={async data => {
+                      await updatePlaylistSong(team.pg_org_id, team.pg_team_id, song.id, data)
+                      const updated = await getPlaylist(team.pg_org_id, team.pg_team_id)
+                      setPlaylist(updated)
+                    }}
+                    onDelete={async () => {
+                      await removePlaylistSong(team.pg_org_id, team.pg_team_id, song.id)
+                      const updated = await getPlaylist(team.pg_org_id, team.pg_team_id)
+                      setPlaylist(updated)
+                      if (playingPlaylistId === song.id) stopAll()
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+          </>
         )}
       </section>
 
@@ -240,7 +267,8 @@ export default function BleacherBoxDJ() {
 // ── Soundboard button ──────────────────────────────────────────────────────
 
 function SoundboardButton({ btn, isPlaying, editing, onTap, onSave }) {
-  const [url, setUrl] = useState(btn.youtube_url || '')
+  const defaultUrl = btn.youtube_url || (btn.youtube_video_id ? `https://youtube.com/watch?v=${btn.youtube_video_id}` : '')
+  const [url, setUrl] = useState(defaultUrl)
   const [start, setStart] = useState(btn.start_seconds ?? btn.suggestedStart ?? 0)
   const [end, setEnd] = useState(btn.end_seconds ?? btn.suggestedEnd ?? 20)
   const [saving, setSaving] = useState(false)
