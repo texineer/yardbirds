@@ -350,9 +350,13 @@ function TeamsInTournament({ eventId, pgUrl, source, ageGroup }) {
 function formatTimeAgo(dateStr) {
   if (!dateStr) return ''
   try {
-    const d = new Date(dateStr + (dateStr.includes('T') ? '' : 'T00:00:00Z'))
+    // DB stores as "2026-03-31 00:27:17" (no T, no Z) — treat as UTC
+    const normalized = dateStr.replace(' ', 'T') + (dateStr.includes('Z') ? '' : 'Z')
+    const d = new Date(normalized)
+    if (isNaN(d.getTime())) return ''
     const now = new Date()
     const diffMs = now - d
+    if (diffMs < 0) return 'just now'
     const mins = Math.floor(diffMs / 60000)
     if (mins < 1) return 'just now'
     if (mins < 60) return `${mins}m ago`
@@ -360,7 +364,7 @@ function formatTimeAgo(dateStr) {
     if (hours < 24) return `${hours}h ago`
     const days = Math.floor(hours / 24)
     return `${days}d ago`
-  } catch { return dateStr }
+  } catch { return '' }
 }
 
 function formatDate(dateStr) {
