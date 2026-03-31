@@ -90,11 +90,14 @@ export default function WalkupSongManager({ orgId, teamId, playerName, playerNum
     } else {
       if (iframeRef.current) {
         if (iframeRef.current.src?.includes(song.youtube_video_id)) {
-          // Already preloaded — send postMessage to play without reloading src
-          // (avoids iOS autoplay block on programmatic src changes)
-          iframeRef.current.contentWindow?.postMessage(
-            JSON.stringify({ event: 'command', func: 'playVideo', args: [] }), '*'
-          )
+          // iframe already loaded (preloaded muted during handlePlay for iOS)
+          // Unmute, seek to start, and ensure playing
+          const win = iframeRef.current.contentWindow
+          const cmd = (func, args = []) => win?.postMessage(JSON.stringify({ event: 'command', func, args }), '*')
+          cmd('seekTo', [Math.floor(song.start_seconds), true])
+          cmd('unMute')
+          cmd('setVolume', [100])
+          cmd('playVideo')
         } else {
           iframeRef.current.src = ytSrc(1)
         }
@@ -109,9 +112,11 @@ export default function WalkupSongManager({ orgId, teamId, playerName, playerNum
     if (!song) return
     setPlaying(true)
     if (song.announce) {
-      // Preload YouTube in background while announcement plays
       if (song.song_type === 'youtube' && iframeRef.current) {
-        iframeRef.current.src = ytSrc(0)
+        // iOS fix: load iframe with autoplay=1 AND mute=1 to "unlock" it
+        // during the user gesture. This lets us unmute + seek later after
+        // the announcer finishes without iOS blocking playback.
+        iframeRef.current.src = `https://www.youtube.com/embed/${song.youtube_video_id}?start=${Math.floor(song.start_seconds)}&end=${Math.floor(song.end_seconds)}&autoplay=1&mute=1&enablejsapi=1`
       }
       announcePlayer(startClip)
     } else {
