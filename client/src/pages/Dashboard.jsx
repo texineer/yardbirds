@@ -120,12 +120,10 @@ export default function Dashboard({ orgId, teamId, slug }) {
                   <span className="text-xs" style={{ color: 'var(--navy-muted)' }}>{team.hometown}</span>
                 )}
               </div>
-              {/* Record */}
               <div className="font-display text-4xl leading-none mt-3" style={{ color: 'var(--navy)' }}>
                 {wins}<span className="opacity-20">-</span>{losses}<span className="opacity-20">-</span>{ties}
               </div>
-              {/* Quick links */}
-              <div className="flex flex-wrap gap-1.5 mt-3">
+              <div className="flex gap-2 mt-3">
                 <Link to="roster"
                   className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1.5 rounded-lg no-underline"
                   style={{ background: 'var(--navy)', color: 'white' }}>
@@ -134,42 +132,40 @@ export default function Dashboard({ orgId, teamId, slug }) {
                   </svg>
                   Roster
                 </Link>
-                <a href={`https://www.perfectgame.org/PGBA/Team/default.aspx?orgid=${orgId}&orgteamid=${teamId}`}
-                  target="_blank" rel="noopener"
-                  className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1.5 rounded-lg no-underline"
-                  style={{ background: 'var(--powder-pale)', color: 'var(--navy)' }}>
-                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M7 17L17 7M17 7H7M17 7v10"/></svg>
-                  PG
-                </a>
-                {team?.ft_team_uuid && team?.ft_seasons && (
-                  <a href={`https://play.fivetoolyouth.org/team/details/${team.ft_seasons.split(',')[0]}/${team.ft_team_uuid}`}
-                    target="_blank" rel="noopener"
-                    className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1.5 rounded-lg no-underline"
-                    style={{ background: 'var(--gold)', color: 'var(--navy)' }}>
-                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M7 17L17 7M17 7H7M17 7v10"/></svg>
-                    Five Tool
-                  </a>
-                )}
+                <button onClick={handleScrape} disabled={scraping}
+                  className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1.5 rounded-lg disabled:opacity-70"
+                  style={{ background: scraping ? 'var(--powder-pale)' : 'var(--gold)', color: 'var(--navy)' }}>
+                  {scraping ? (
+                    <><svg className="diamond-spin w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg> Refreshing</>
+                  ) : (
+                    <><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"/></svg> Refresh All</>
+                  )}
+                </button>
               </div>
             </div>
-            <button
-              onClick={handleScrape}
-              disabled={scraping}
-              className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg shrink-0 disabled:opacity-70 transition-colors"
-              style={{ background: scraping ? 'var(--powder-pale)' : 'var(--gold)', color: 'var(--navy)' }}
-            >
-              {scraping ? (
-                <>
-                  <svg className="diamond-spin w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
-                  Refreshing...
-                </>
-              ) : (
-                <>
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"/></svg>
-                  Refresh All
-                </>
+          </div>
+
+          {/* Team Sites */}
+          <div className="mt-4 pt-3" style={{ borderTop: '1px solid var(--border)' }}>
+            <div className="text-[9px] font-bold uppercase tracking-[0.15em] text-center mb-2" style={{ color: 'var(--navy-muted)' }}>Team Sites</div>
+            <div className="flex gap-2">
+              <a href={`https://www.perfectgame.org/PGBA/Team/default.aspx?orgid=${orgId}&orgteamid=${teamId}`}
+                target="_blank" rel="noopener"
+                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl no-underline active:scale-97"
+                style={{ background: 'var(--navy)', color: 'white' }}>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M7 17L17 7M17 7H7M17 7v10"/></svg>
+                <span className="text-xs font-bold uppercase tracking-wider">Perfect Game</span>
+              </a>
+              {team?.ft_team_uuid && team?.ft_seasons && (
+                <a href={`https://play.fivetoolyouth.org/team/details/${team.ft_seasons.split(',')[0]}/${team.ft_team_uuid}`}
+                  target="_blank" rel="noopener"
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl no-underline active:scale-97"
+                  style={{ background: 'var(--gold)', color: 'var(--navy)' }}>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M7 17L17 7M17 7H7M17 7v10"/></svg>
+                  <span className="text-xs font-bold uppercase tracking-wider">Five Tool</span>
+                </a>
               )}
-            </button>
+            </div>
           </div>
         </div>
       </div>
@@ -204,11 +200,17 @@ export default function Dashboard({ orgId, teamId, slug }) {
               onClick={isPast ? toggleExpand : undefined}>
               <div className="flex items-start justify-between">
                 <div className="flex-1 min-w-0">
-                  {t.pg_url ? (
-                    <a href={t.pg_url} target="_blank" rel="noopener" className="font-display text-lg text-white leading-tight truncate block no-underline hover:underline">{t.name}</a>
-                  ) : (
-                    <div className="font-display text-lg text-white leading-tight truncate">{t.name}</div>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {t.pg_url ? (
+                      <a href={t.pg_url} target="_blank" rel="noopener" className="font-display text-lg text-white leading-tight truncate no-underline hover:underline">{t.name}</a>
+                    ) : (
+                      <span className="font-display text-lg text-white leading-tight truncate">{t.name}</span>
+                    )}
+                    <span className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded flex-shrink-0"
+                      style={{ background: t.source === 'ft' ? 'var(--gold)' : 'var(--powder)', color: 'var(--navy)' }}>
+                      {t.source === 'ft' ? 'FT' : 'PG'}
+                    </span>
+                  </div>
                   {t.start_date && (
                     <div className="text-[10px] font-bold text-white/50 mt-1">
                       {formatDate(t.start_date)}{t.end_date && t.end_date !== t.start_date ? ` — ${formatDate(t.end_date)}` : ''}
