@@ -482,6 +482,11 @@ async function getFullScorebookState(gameId) {
 
 // ── Bracket Games ─────────────────────────────────────────────────────────
 
+async function touchTournamentLastScraped(eventId) {
+  const db = await getDb();
+  run(db, "UPDATE tournaments SET last_scraped = datetime('now') WHERE pg_event_id = ?", [eventId]);
+}
+
 async function getBracketGames(eventId) {
   const db = await getDb();
   return all(db, `
@@ -628,7 +633,7 @@ module.exports = {
   getInningScores, upsertInningScore,
   getPlateAppearances, insertPlateAppearance, updatePlateAppearanceOutcome,
   logPitch, getLivePitchCounts, deleteLastPitch, getFullScorebookState, getGameSprayChart, getGameScore, getHalfInningStats,
-  getBracketGames, upsertBracketGame,
+  touchTournamentLastScraped, getBracketGames, upsertBracketGame,
   // Auth
   createUser, getUserByEmail, getUserById, getUserTeamRoles, getUserRoleForTeam,
   setUserTeamRole, removeUserTeamRole, getTeamMembers, getTeamFromGameId,

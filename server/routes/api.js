@@ -320,6 +320,7 @@ router.post('/tournaments/:eventId/sync', async (req, res) => {
             }
           }
         }
+        await queries.touchTournamentLastScraped(eventId);
         console.log(`[api] Tournament ${eventId} sync complete`);
       } catch (err) {
         console.error(`[api] Tournament ${eventId} sync error: ${err.message}`);
