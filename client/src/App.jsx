@@ -11,6 +11,7 @@ import TournamentSchedule from './pages/TournamentSchedule'
 import TournamentBracket from './pages/TournamentBracket'
 import Landing from './pages/Landing'
 import Auth from './pages/Auth'
+import Account from './pages/Account'
 import ScoreGame from './pages/ScoreGame'
 import LineupSetup from './pages/LineupSetup'
 import Scorebook from './pages/Scorebook'
@@ -27,6 +28,7 @@ function App() {
         {/* Landing page — no header/nav */}
         <Route path="/" element={<Landing />} />
         <Route path="/login" element={<Auth />} />
+        <Route path="/account" element={<Account />} />
         <Route path="/score" element={<ScoreGame />} />
         {/* Team pages — with header/nav */}
         <Route path="/:slug/*" element={<TeamLayout />} />
@@ -80,7 +82,7 @@ function TeamLayout() {
       {/* Header */}
       <header className="relative overflow-hidden" style={{ background: 'var(--navy)' }}>
         <div className="relative px-4 py-2.5 flex items-center justify-between">
-          {/* Team name — tappable to switch if multiple teams */}
+          {/* Left: BleacherBox logo + team name */}
           <div className="flex items-center gap-2.5 min-w-0 flex-1">
             <Link to={`/${slug}`} className="flex items-center gap-2.5 no-underline min-w-0 flex-1">
               <img src={team.logo_url || '/yardbirds-logo.png'} alt="" className="w-9 h-9 object-contain flex-shrink-0" />
@@ -97,18 +99,19 @@ function TeamLayout() {
                     </button>
                   )}
                 </div>
-                <img src="/bleacherbox_logo.png" alt="BleacherBox" className="h-3.5 object-contain" />
+                <span className="text-[9px] font-bold uppercase tracking-widest" style={{ color: 'var(--gold)', opacity: 0.7 }}>bleacherbox.app</span>
               </div>
             </Link>
           </div>
-          {/* User */}
+          {/* User avatar → account page */}
           {user ? (
-            <Link to="/" className="flex items-center gap-1.5 no-underline px-2 py-1 rounded flex-shrink-0"
+            <Link to="/account" className="flex items-center gap-1.5 no-underline px-2 py-1 rounded flex-shrink-0"
               style={{ background: 'rgba(255,255,255,0.1)' }}>
               <span className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold"
                 style={{ background: 'var(--gold)', color: 'var(--navy)' }}>
                 {(user.display_name || user.email).charAt(0).toUpperCase()}
               </span>
+              <span className="text-[10px] font-semibold text-white/60 hidden sm:inline">{user.display_name || user.email}</span>
             </Link>
           ) : (
             <Link to="/login" className="text-[10px] font-bold uppercase tracking-wider no-underline px-3 py-1.5 rounded flex-shrink-0"

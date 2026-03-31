@@ -69,4 +69,30 @@ router.get('/me', async (req, res) => {
   }
 });
 
+// POST /api/auth/change-password
+router.post('/change-password', async (req, res) => {
+  try {
+    if (!req.session?.userId) return res.status(401).json({ error: 'Not authenticated' });
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Both passwords required' });
+    if (newPassword.length < 8) return res.status(400).json({ error: 'New password must be at least 8 characters' });
+
+    const user = await queries.getUserByEmail((await queries.getUserById(req.session.userId)).email);
+    if (!user) return res.status(401).json({ error: 'User not found' });
+
+    const valid = await bcrypt.compare(currentPassword, user.password_hash);
+    if (!valid) return res.status(401).json({ error: 'Current password is incorrect' });
+
+    const newHash = await bcrypt.hash(newPassword, 10);
+    const { getDb, saveDb } = require('../db/schema');
+    const db = await getDb();
+    db.run('UPDATE users SET password_hash = ? WHERE id = ?', [newHash, user.id]);
+    saveDb();
+
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

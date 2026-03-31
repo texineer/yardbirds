@@ -105,6 +105,10 @@ export function authLogout() {
   return authFetch('POST', '/auth/logout');
 }
 
+export function changePassword(currentPassword, newPassword) {
+  return authFetch('POST', '/auth/change-password', { currentPassword, newPassword });
+}
+
 export function authMe() {
   return fetchJson('/auth/me');
 }
