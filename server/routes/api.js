@@ -282,30 +282,39 @@ router.post('/tournaments/:eventId/sync', async (req, res) => {
             }
           }
         } else {
-          // PG tournaments: re-scrape schedule, pitch counts, and game scores
-          const { scrapeTournamentPage, scrapePitchingReport, scrapeTournamentSchedule } = require('../scrapers/tournament');
-          const { scrapeGameScore } = require('../scrapers/game');
+          // PG tournaments: scrape TournamentSchedule.aspx (all dates, pool + bracket)
+          const { scrapeTournamentPage, scrapePitchingReport, scrapeTournamentScheduleFull } = require('../scrapers/tournament');
 
           await scrapeTournamentPage(eventId);
-          const scheduledGames = await scrapeTournamentSchedule(eventId);
 
-          // Match and save games for all registered teams
+          // Get all games from all dates via TournamentSchedule.aspx
+          const allScrapedGames = await scrapeTournamentScheduleFull(eventId);
           const allTeams = await queries.getAllTeams();
-          for (const team of allTeams) {
-            const teamName = (team.name || '').toLowerCase();
-            for (const sg of scheduledGames) {
-              const teamEntry = sg.teams.find(t =>
-                (t.orgId === team.pg_org_id && t.teamId === team.pg_team_id) ||
-                (teamName && t.name && (t.name.toLowerCase().includes(teamName) || teamName.includes(t.name.toLowerCase())))
-              );
-              if (!teamEntry) continue;
-              const opponent = sg.teams.find(t => t !== teamEntry) || { name: 'TBD' };
+
+          // Match each game to registered teams by exact name
+          for (const sg of allScrapedGames) {
+            for (const team of allTeams) {
+              const tn = (team.name || '').toLowerCase();
+              const t1 = sg.team1.toLowerCase();
+              const t2 = sg.team2.toLowerCase();
+
+              if (t1 !== tn && t2 !== tn) continue;
+
+              const weAreTeam1 = t1 === tn;
+              const opponentName = weAreTeam1 ? sg.team2 : sg.team1;
+              const scoreUs = weAreTeam1 ? sg.score1 : sg.score2;
+              const scoreThem = weAreTeam1 ? sg.score2 : sg.score1;
+              let result = null;
+              if (scoreUs != null && scoreThem != null) {
+                result = scoreUs > scoreThem ? 'W' : scoreUs < scoreThem ? 'L' : 'T';
+              }
+
               await queries.upsertGame({
                 pgGameId: sg.pgGameId, pgEventId: eventId,
                 teamOrgId: team.pg_org_id, teamId: team.pg_team_id,
-                opponentName: opponent.name, opponentOrgId: opponent.orgId, opponentTeamId: opponent.teamId,
-                gameDate: sg.gameDate || '', gameTime: sg.gameTime, field: sg.field,
-                scoreUs: null, scoreThem: null, result: null,
+                opponentName, opponentOrgId: null, opponentTeamId: null,
+                gameDate: sg.gameDate || '', gameTime: sg.gameTime || '', field: sg.field || '',
+                scoreUs, scoreThem, result,
                 pgBoxUrl: sg.pgBoxUrl, pgRecapUrl: '',
               });
             }
@@ -321,55 +330,6 @@ router.post('/tournaments/:eventId/sync', async (req, res) => {
               pitches: entry.pitches, innings: entry.innings,
               strikeouts: entry.strikeouts, walks: entry.walks,
             });
-          }
-
-          // Scrape bracket games
-          const { scrapeBracketGames } = require('../scrapers/tournament');
-          const bracketGames = await scrapeBracketGames(eventId);
-          for (const g of bracketGames) {
-            if (g.homeTeam && g.awayTeam) {
-              await queries.upsertBracketGame({
-                pgGameId: g.pgGameId, pgEventId: eventId,
-                teamOrgId: 0, teamId: 0,
-                opponentName: `${g.homeTeam.name} vs ${g.awayTeam.name}`,
-                gameDate: g.gameDate, gameTime: g.gameTime, field: g.field,
-                scoreUs: g.homeTeam.score, scoreThem: g.awayTeam.score, result: null,
-                bracketName: g.bracketName, bracketRound: g.round,
-                homeSeed: g.homeTeam.seed, awaySeed: g.awayTeam.seed,
-              });
-            }
-          }
-
-          // Claim bracket games for all registered teams
-          for (const team of allTeams) {
-            if (team.name) {
-              await queries.claimBracketGamesForTeam(eventId, team.pg_org_id, team.pg_team_id, team.name);
-            }
-          }
-
-          // Fetch missing game scores
-          const games = await queries.getTournamentGames(eventId);
-          for (const game of games) {
-            if (game.pg_game_id && !game.result) {
-              try {
-                const score = await scrapeGameScore(game.pg_game_id);
-                if (score?.isFinal) {
-                  const team = await queries.getTeam(game.team_org_id, game.team_id);
-                  const tn = (team?.name || '').toLowerCase();
-                  const homeIsUs = score.homeName.toLowerCase().includes(tn) || tn.includes(score.homeName.toLowerCase());
-                  const scoreUs = homeIsUs ? score.homeScore : score.visitorScore;
-                  const scoreThem = homeIsUs ? score.visitorScore : score.homeScore;
-                  const result = scoreUs > scoreThem ? 'W' : scoreUs < scoreThem ? 'L' : 'T';
-                  await queries.upsertGame({
-                    pgGameId: game.pg_game_id, pgEventId: eventId,
-                    teamOrgId: game.team_org_id, teamId: game.team_id,
-                    opponentName: game.opponent_name, opponentOrgId: game.opponent_org_id, opponentTeamId: game.opponent_team_id,
-                    gameDate: game.game_date, gameTime: game.game_time, field: game.field,
-                    scoreUs, scoreThem, result, pgBoxUrl: game.pg_box_url, pgRecapUrl: game.pg_recap_url || '',
-                  });
-                }
-              } catch (e) {}
-            }
           }
         }
         await queries.touchTournamentLastScraped(eventId);

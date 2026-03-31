@@ -499,4 +499,141 @@ async function scrapeBracketGames(eventId) {
   }
 }
 
-module.exports = { scrapeTournamentPage, scrapePitchingReport, scrapeTournamentSchedule, scrapeBracketGames, scrapeRegisteredTeams };
+// Scrape all games from TournamentSchedule.aspx (pool play + bracket play, all dates)
+// URL: /events/TournamentSchedule.aspx?event={eventId}&Date={MM/DD/YYYY}
+async function scrapeTournamentScheduleFull(eventId) {
+  const baseUrl = `${PG_BASE}/events/TournamentSchedule.aspx?event=${eventId}`;
+  console.log(`[scraper] Fetching full tournament schedule: ${baseUrl}`);
+
+  try {
+    // First, get the page to find all date tabs
+    const { data: html } = await axios.get(baseUrl, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' },
+      timeout: 30000,
+    });
+    const $first = cheerio.load(html);
+
+    // Find all date links
+    const dates = new Set();
+    $first('a[href*="TournamentSchedule"]').each((_, el) => {
+      const href = $first(el).attr('href') || '';
+      const dm = href.match(/Date=(\d{1,2}\/\d{1,2}\/\d{4})/);
+      if (dm) dates.add(dm[1]);
+    });
+
+    // If no date tabs, try current page
+    if (dates.size === 0) dates.add('');
+
+    const allGames = [];
+
+    for (const dateStr of dates) {
+      const url = dateStr ? `${baseUrl}&Date=${dateStr}` : baseUrl;
+
+      // Convert MM/DD/YYYY to YYYY-MM-DD
+      let isoDate = '';
+      if (dateStr) {
+        const [m, d, y] = dateStr.split('/');
+        isoDate = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+      }
+
+      let pageHtml = html;
+      if (dateStr && dateStr !== [...dates][0]) {
+        const resp = await axios.get(url, {
+          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+          timeout: 30000,
+        });
+        pageHtml = resp.data;
+      }
+
+      const $ = cheerio.load(pageHtml);
+      const seen = new Set();
+
+      $('a[href*="DiamondKast/Game.aspx?gameid="]').each((_, el) => {
+        const href = $(el).attr('href') || '';
+        const gm = href.match(/gameid=(\d+)/);
+        if (!gm) return;
+        const pgGameId = parseInt(gm[1]);
+        if (seen.has(pgGameId)) return;
+
+        const text = $(el).text().trim().replace(/\s+/g, ' ');
+        if (text.length < 10) return; // Skip sub-links (recap, etc.)
+        seen.add(pgGameId);
+
+        // Parse: "Field Name Game Recap Final Team1Name Score1 Team2Name Score2"
+        // or: "Field Name Time Team1 vs Team2"
+        const timeMatch = text.match(/(\d{1,2}:\d{2}\s*(?:AM|PM))/i);
+        const hasFinal = /Game Recap|Final/i.test(text);
+
+        // Extract field (before 'Game Recap' or time)
+        let field = '';
+        const markerIdx = text.search(/Game Recap|\d{1,2}:\d{2}\s*(?:AM|PM)/i);
+        if (markerIdx > 0) field = text.slice(0, markerIdx).trim();
+
+        // Get the part after "Final" or after time
+        let teamsPart = '';
+        if (hasFinal) {
+          const fi = text.search(/Final/i);
+          teamsPart = text.slice(fi + 5).trim();
+        } else if (timeMatch) {
+          teamsPart = text.slice(text.indexOf(timeMatch[0]) + timeMatch[0].length).trim();
+        }
+
+        // Parse "Team1Name Score1 Team2Name Score2"
+        // The score is the last number attached to each team segment
+        // Split by finding standalone numbers that separate teams
+        let team1 = '', team2 = '', score1 = null, score2 = null;
+
+        // Strategy: match trailing number from the end for team2, then from remainder for team1
+        const m2 = teamsPart.match(/^(.+?)\s+(\d{1,3})\s*$/);
+        if (m2) {
+          score2 = parseInt(m2[2]);
+          const rest = m2[1].trim();
+          // Now rest = "Team1Name Score1 Team2Name" — find score1 (a number in the middle)
+          const m1 = rest.match(/^(.+?)\s+(\d{1,3})\s+(.+)$/);
+          if (m1) {
+            team1 = m1[1].trim();
+            score1 = parseInt(m1[2]);
+            team2 = m1[3].trim();
+          }
+        }
+
+        // Fallback: try "Team1 vs Team2" (no scores)
+        if (!team1 && teamsPart.includes(' vs ')) {
+          const vsParts = teamsPart.split(' vs ');
+          team1 = vsParts[0]?.trim() || '';
+          team2 = vsParts[1]?.trim() || '';
+        }
+
+        if (!team1 && !team2) return;
+
+        allGames.push({
+          pgGameId,
+          pgEventId: eventId,
+          gameDate: isoDate,
+          gameTime: timeMatch ? timeMatch[1].trim() : '',
+          field,
+          team1,
+          team2,
+          score1,
+          score2,
+          isFinal: hasFinal,
+          pgBoxUrl: `${PG_BASE}/DiamondKast/Game.aspx?gameid=${pgGameId}`,
+        });
+      });
+    }
+
+    // Deduplicate by pgGameId
+    const uniqueMap = new Map();
+    for (const g of allGames) {
+      if (!uniqueMap.has(g.pgGameId)) uniqueMap.set(g.pgGameId, g);
+    }
+    const unique = [...uniqueMap.values()];
+    console.log(`[scraper] Found ${unique.length} games across ${dates.size} date(s) for event ${eventId}`);
+    return unique;
+  } catch (err) {
+    console.error(`[scraper] TournamentSchedule error for ${eventId}: ${err.message}`);
+    return [];
+  }
+}
+
+module.exports = { scrapeTournamentPage, scrapePitchingReport, scrapeTournamentSchedule, scrapeBracketGames, scrapeRegisteredTeams, scrapeTournamentScheduleFull };
