@@ -500,35 +500,29 @@ function bracketNameMatches(bracketName, teamName) {
   return matches.length >= 1;
 }
 
-// Claim unmatched bracket games for a team by name matching in "Team A vs Team B" format
+// Claim bracket games for a team. Processes ALL bracket games with "vs" in the name.
 async function claimBracketGamesForTeam(eventId, orgId, teamId, teamName) {
   const db = await getDb();
-  // First, reset any bracket games in this tournament that were wrongly claimed by this team
-  // (they still have "vs" in opponent_name or team_org_id matches but name doesn't)
-  const ourBracketGames = all(db, `SELECT * FROM games WHERE pg_event_id = ? AND game_type = 'bracket' AND team_org_id = ? AND team_id = ?`, [eventId, orgId, teamId]);
-  for (const g of ourBracketGames) {
-    // If opponent still has "vs" it was never properly claimed
-    if (g.opponent_name && g.opponent_name.includes(' vs ')) {
-      const parts = g.opponent_name.split(' vs ').map(s => s.trim());
-      const weAre0 = bracketNameMatches(parts[0], teamName);
-      const weAre1 = parts[1] ? bracketNameMatches(parts[1], teamName) : false;
-      if (!weAre0 && !weAre1) {
-        // Wrong team — unclaim
-        run(db, `UPDATE games SET team_org_id=0, team_id=0 WHERE id=?`, [g.id]);
-      }
-    }
-  }
+  const bracketGames = all(db, `SELECT * FROM games WHERE pg_event_id = ? AND game_type = 'bracket'`, [eventId]);
 
-  // Now claim unmatched bracket games
-  const bracketGames = all(db, `SELECT * FROM games WHERE pg_event_id = ? AND game_type = 'bracket' AND team_org_id = 0`, [eventId]);
   for (const g of bracketGames) {
-    const parts = (g.opponent_name || '').split(' vs ').map(s => s.trim());
+    if (!g.opponent_name || !g.opponent_name.includes(' vs ')) continue;
+
+    const parts = g.opponent_name.split(' vs ').map(s => s.trim());
     if (parts.length !== 2) continue;
 
     const weAre0 = bracketNameMatches(parts[0], teamName);
     const weAre1 = bracketNameMatches(parts[1], teamName);
-    if (!weAre0 && !weAre1) continue;
 
+    if (!weAre0 && !weAre1) {
+      // Not our game — unclaim if we wrongly own it
+      if (g.team_org_id === orgId && g.team_id === teamId) {
+        run(db, `UPDATE games SET team_org_id=0, team_id=0, result=NULL WHERE id=?`, [g.id]);
+      }
+      continue;
+    }
+
+    // Our game — set proper opponent, scores, and result
     const opponent = weAre0 ? parts[1] : parts[0];
     let scoreUs = weAre0 ? g.score_us : g.score_them;
     let scoreThem = weAre0 ? g.score_them : g.score_us;
@@ -610,17 +604,17 @@ async function getWalkupSong(orgId, teamId, playerName) {
   return get(db, 'SELECT * FROM player_walkup_songs WHERE pg_org_id = ? AND pg_team_id = ? AND player_name = ?', [orgId, teamId, playerName]);
 }
 
-async function upsertWalkupSong({ pgOrgId, pgTeamId, playerName, songType, filePath, youtubeUrl, youtubeVideoId, startSeconds, endSeconds, songTitle, artistName, uploadedBy }) {
+async function upsertWalkupSong({ pgOrgId, pgTeamId, playerName, songType, filePath, youtubeUrl, youtubeVideoId, startSeconds, endSeconds, songTitle, artistName, uploadedBy, announce = 1 }) {
   const db = await getDb();
   run(db, `
-    INSERT INTO player_walkup_songs (pg_org_id, pg_team_id, player_name, song_type, file_path, youtube_url, youtube_video_id, start_seconds, end_seconds, song_title, artist_name, uploaded_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO player_walkup_songs (pg_org_id, pg_team_id, player_name, song_type, file_path, youtube_url, youtube_video_id, start_seconds, end_seconds, song_title, artist_name, uploaded_by, announce)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(pg_org_id, pg_team_id, player_name) DO UPDATE SET
       song_type=excluded.song_type, file_path=excluded.file_path, youtube_url=excluded.youtube_url,
       youtube_video_id=excluded.youtube_video_id, start_seconds=excluded.start_seconds,
       end_seconds=excluded.end_seconds, song_title=excluded.song_title, artist_name=excluded.artist_name,
-      uploaded_by=excluded.uploaded_by, created_at=datetime('now')
-  `, [pgOrgId, pgTeamId, playerName, songType, filePath ?? null, youtubeUrl ?? null, youtubeVideoId ?? null, startSeconds, endSeconds, songTitle ?? null, artistName ?? null, uploadedBy ?? null]);
+      uploaded_by=excluded.uploaded_by, announce=excluded.announce, created_at=datetime('now')
+  `, [pgOrgId, pgTeamId, playerName, songType, filePath ?? null, youtubeUrl ?? null, youtubeVideoId ?? null, startSeconds, endSeconds, songTitle ?? null, artistName ?? null, uploadedBy ?? null, announce ? 1 : 0]);
 }
 
 async function deleteWalkupSong(orgId, teamId, playerName) {
