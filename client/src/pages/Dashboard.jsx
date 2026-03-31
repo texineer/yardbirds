@@ -12,6 +12,7 @@ export default function Dashboard({ orgId, teamId, slug }) {
   const [error, setError] = useState(null)
   const [scraping, setScraping] = useState(false)
   const [syncingTournament, setSyncingTournament] = useState(null)
+  const [expandedTournaments, setExpandedTournaments] = useState(new Set())
   const { user, hasTeamRole } = useAuth()
 
   useEffect(() => {
@@ -123,15 +124,33 @@ export default function Dashboard({ orgId, teamId, slug }) {
               <div className="font-display text-4xl leading-none mt-3" style={{ color: 'var(--navy)' }}>
                 {wins}<span className="opacity-20">-</span>{losses}<span className="opacity-20">-</span>{ties}
               </div>
-              {/* Roster button */}
-              <Link to="roster"
-                className="inline-flex items-center gap-1.5 mt-3 text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-lg no-underline"
-                style={{ background: 'var(--navy)', color: 'white' }}>
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                  <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/>
-                </svg>
-                Roster ({team?.players?.length || 0})
-              </Link>
+              {/* Quick links */}
+              <div className="flex flex-wrap gap-1.5 mt-3">
+                <Link to="roster"
+                  className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1.5 rounded-lg no-underline"
+                  style={{ background: 'var(--navy)', color: 'white' }}>
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                    <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/>
+                  </svg>
+                  Roster
+                </Link>
+                <a href={`https://www.perfectgame.org/PGBA/Team/default.aspx?orgid=${orgId}&orgteamid=${teamId}`}
+                  target="_blank" rel="noopener"
+                  className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1.5 rounded-lg no-underline"
+                  style={{ background: 'var(--powder-pale)', color: 'var(--navy)' }}>
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M7 17L17 7M17 7H7M17 7v10"/></svg>
+                  PG
+                </a>
+                {team?.ft_team_uuid && team?.ft_seasons && (
+                  <a href={`https://play.fivetoolyouth.org/team/details/${team.ft_seasons.split(',')[0]}/${team.ft_team_uuid}`}
+                    target="_blank" rel="noopener"
+                    className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1.5 rounded-lg no-underline"
+                    style={{ background: 'var(--gold)', color: 'var(--navy)' }}>
+                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M7 17L17 7M17 7H7M17 7v10"/></svg>
+                    Five Tool
+                  </a>
+                )}
+              </div>
             </div>
             <button
               onClick={handleScrape}
@@ -164,12 +183,25 @@ export default function Dashboard({ orgId, teamId, slug }) {
       )}
 
       {tournaments.map(({ tournament: t, games }) => {
-        // Extract unique opponent names from games in this tournament
         const opponents = [...new Set(games.map(g => g.opponent_name).filter(Boolean))].sort()
+        const isPast = (t.end_date || t.start_date || '') < now
+        const isExpanded = !isPast || expandedTournaments.has(t.pg_event_id)
+        const toggleExpand = () => setExpandedTournaments(prev => {
+          const next = new Set(prev)
+          next.has(t.pg_event_id) ? next.delete(t.pg_event_id) : next.add(t.pg_event_id)
+          return next
+        })
+        // Summary for collapsed past tournaments
+        const gameResults = games.filter(g => g.result)
+        const wCount = gameResults.filter(g => g.result === 'W').length
+        const lCount = gameResults.filter(g => g.result === 'L').length
+
         return (
           <div key={t.pg_event_id}>
             {/* Tournament header */}
-            <div className="rounded-t-xl px-4 py-3" style={{ background: 'var(--navy)' }}>
+            <div className={`${isExpanded ? 'rounded-t-xl' : 'rounded-xl'} px-4 py-3`}
+              style={{ background: 'var(--navy)', cursor: isPast ? 'pointer' : undefined }}
+              onClick={isPast ? toggleExpand : undefined}>
               <div className="flex items-start justify-between">
                 <div className="flex-1 min-w-0">
                   {t.pg_url ? (
@@ -185,6 +217,24 @@ export default function Dashboard({ orgId, teamId, slug }) {
                   {t.last_scraped && (
                     <div className="text-[9px] text-white/30 mt-0.5">
                       Updated {formatTimeAgo(t.last_scraped)}
+                    </div>
+                  )}
+                  {isPast && !isExpanded && gameResults.length > 0 && (
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[10px] font-bold" style={{ color: 'var(--gold)' }}>{wCount}W-{lCount}L</span>
+                      <span className="text-[10px] text-white/40">{gameResults.length} games</span>
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2.5" strokeLinecap="round">
+                        <path d="M6 9l6 6 6-6"/>
+                      </svg>
+                    </div>
+                  )}
+                  {isPast && isExpanded && (
+                    <div className="flex items-center gap-1 mt-1">
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2.5" strokeLinecap="round"
+                        style={{ transform: 'rotate(180deg)' }}>
+                        <path d="M6 9l6 6 6-6"/>
+                      </svg>
+                      <span className="text-[10px] text-white/40">Collapse</span>
                     </div>
                   )}
                 </div>
@@ -233,21 +283,23 @@ export default function Dashboard({ orgId, teamId, slug }) {
               </div>
             </div>
 
-            {/* Games or Teams list */}
-            <div className="rounded-b-xl overflow-hidden border border-t-0 mb-1" style={{ borderColor: 'var(--border)' }}>
-              {games.length === 0 ? (
-                <div className="p-4">
-                  <div className="text-sm text-center mb-3" style={{ color: 'var(--navy-muted)' }}>Schedule not available yet</div>
-                  <TeamsInTournament eventId={t.pg_event_id} pgUrl={t.pg_url} source={t.source} ageGroup={team?.age_group} />
-                </div>
-              ) : (
-                <div className="divide-y" style={{ borderColor: 'var(--border)' }}>
-                  {games.sort((a, b) => (a.game_date || '').localeCompare(b.game_date || '') || (a.game_time || '').localeCompare(b.game_time || '')).map((g, i) => (
-                    <GameCard key={g.id} game={g} index={i} />
-                  ))}
-                </div>
-              )}
-            </div>
+            {/* Games or Teams list (collapsible for past tournaments) */}
+            {isExpanded && (
+              <div className="rounded-b-xl overflow-hidden border border-t-0 mb-1" style={{ borderColor: 'var(--border)' }}>
+                {games.length === 0 ? (
+                  <div className="p-4">
+                    <div className="text-sm text-center mb-3" style={{ color: 'var(--navy-muted)' }}>Schedule not available yet</div>
+                    <TeamsInTournament eventId={t.pg_event_id} pgUrl={t.pg_url} source={t.source} ageGroup={team?.age_group} />
+                  </div>
+                ) : (
+                  <div className="divide-y" style={{ borderColor: 'var(--border)' }}>
+                    {games.sort((a, b) => (a.game_date || '').localeCompare(b.game_date || '') || (a.game_time || '').localeCompare(b.game_time || '')).map((g, i) => (
+                      <GameCard key={g.id} game={g} index={i} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )
       })}

@@ -73,7 +73,6 @@ function TeamLayout() {
 
   const navItems = [
     { path: `/${slug}`, label: 'Home', icon: HomeIcon },
-    { path: `/${slug}/schedule`, label: 'Schedule', icon: CalendarIcon },
     ...(isAdmin ? [{ path: `/${slug}/members`, label: 'Members', icon: MembersIcon }] : []),
     { path: `/${slug}/search`, label: 'Teams', icon: SearchIcon },
   ]
