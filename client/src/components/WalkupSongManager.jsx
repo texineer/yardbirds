@@ -26,6 +26,7 @@ export default function WalkupSongManager({ orgId, teamId, playerName, playerNum
   const [upAnnounce, setUpAnnounce] = useState(true)
 
   const audioRef = useRef(null)
+  const announceAudioRef = useRef(null)
   const stopTimerRef = useRef(null)
   const iframeRef = useRef(null)
 
@@ -38,6 +39,11 @@ export default function WalkupSongManager({ orgId, teamId, playerName, playerNum
   function stopPlayback() {
     clearTimeout(stopTimerRef.current)
     if (window.speechSynthesis) window.speechSynthesis.cancel()
+    if (announceAudioRef.current) {
+      announceAudioRef.current.pause()
+      announceAudioRef.current.onended = null
+      announceAudioRef.current = null
+    }
     if (audioRef.current) {
       audioRef.current.pause()
       audioRef.current.currentTime = 0
@@ -47,17 +53,24 @@ export default function WalkupSongManager({ orgId, teamId, playerName, playerNum
   }
 
   function announcePlayer(onDone) {
-    if (!window.speechSynthesis) { onDone(); return }
-    const numStr = playerNumber ? ` number ${playerNumber},` : ''
-    const utterance = new SpeechSynthesisUtterance(
-      `Now batting,${numStr} ${playerName}!`
-    )
-    utterance.rate = 0.82
-    utterance.pitch = 0.75
-    utterance.volume = 1
-    utterance.onend = onDone
-    utterance.onerror = onDone
-    window.speechSynthesis.speak(utterance)
+    if (song?.announce_audio_path) {
+      const a = new Audio(`/walkups/${song.announce_audio_path}`)
+      announceAudioRef.current = a
+      a.onended = onDone
+      a.onerror = onDone
+      a.play().catch(onDone)
+    } else if (window.speechSynthesis) {
+      const numStr = playerNumber ? ` number ${playerNumber},` : ''
+      const utterance = new SpeechSynthesisUtterance(`Now batting,${numStr} ${playerName}!`)
+      utterance.rate = 0.82
+      utterance.pitch = 0.75
+      utterance.volume = 1
+      utterance.onend = onDone
+      utterance.onerror = onDone
+      window.speechSynthesis.speak(utterance)
+    } else {
+      onDone()
+    }
   }
 
   function startClip() {
@@ -102,6 +115,7 @@ export default function WalkupSongManager({ orgId, teamId, playerName, playerNum
         title: ytTitle.trim() || null,
         artist: ytArtist.trim() || null,
         announce: ytAnnounce,
+        playerNumber: playerNumber || null,
       })
       const updated = await getWalkupSong(orgId, teamId, playerName)
       setSong(updated)
@@ -124,6 +138,7 @@ export default function WalkupSongManager({ orgId, teamId, playerName, playerNum
       fd.append('startSeconds', upStart)
       fd.append('endSeconds', upEnd)
       fd.append('announce', upAnnounce ? '1' : '0')
+      if (playerNumber) fd.append('playerNumber', playerNumber)
       if (upTitle) fd.append('title', upTitle)
       if (upArtist) fd.append('artist', upArtist)
       await uploadWalkupSong(orgId, teamId, playerName, fd)

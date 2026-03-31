@@ -3,12 +3,46 @@ const router = express.Router();
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
+const axios = require('axios');
 const queries = require('../db/queries');
 const { scrapeAll } = require('../scrapers/run');
 const { scrapeTournamentSchedule } = require('../scrapers/tournament');
 const { requireAuth, requireTeamRole } = require('../middleware/auth');
 
 const dataDir = path.join(__dirname, '..', '..', 'data');
+
+// ── ElevenLabs PA Announcer ────────────────────────────────────────────────────
+
+async function generateAnnouncement(orgId, teamId, playerName, playerNumber) {
+  const apiKey = process.env.ELEVENLABS_API_KEY;
+  if (!apiKey) return null;
+  const voiceId = process.env.ELEVENLABS_VOICE_ID || 'pNInz6obpgDQGcFmaJgB'; // Adam — deep, authoritative
+  const numStr = playerNumber ? ` number ${playerNumber},` : '';
+  const text = `Now batting,${numStr} ${playerName}!`;
+  try {
+    const response = await axios.post(
+      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
+      {
+        text,
+        model_id: 'eleven_turbo_v2_5',
+        voice_settings: { stability: 0.45, similarity_boost: 0.75, style: 0.60, use_speaker_boost: true },
+      },
+      {
+        headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json' },
+        responseType: 'arraybuffer',
+      }
+    );
+    const slug = playerName.toLowerCase().replace(/[^a-z0-9]/g, '-');
+    const dir = path.join(dataDir, 'walkups', String(orgId), String(teamId));
+    fs.mkdirSync(dir, { recursive: true });
+    const filename = `${slug}-announce.mp3`;
+    fs.writeFileSync(path.join(dir, filename), Buffer.from(response.data));
+    return `${orgId}/${teamId}/${filename}`;
+  } catch (err) {
+    console.error('[ElevenLabs] announcement generation failed:', err.message);
+    return null;
+  }
+}
 
 const walkupStorage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -958,10 +992,15 @@ router.post('/teams/:orgId/:teamId/players/:playerName/walkup-song/upload',
       if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
       const { orgId, teamId, playerName } = req.params;
       const filePath = `${orgId}/${teamId}/${req.file.filename}`;
+      const shouldAnnounce = req.body.announce !== '0' && req.body.announce !== 'false';
+      const decodedName = decodeURIComponent(playerName);
+      const announceAudioPath = shouldAnnounce
+        ? await generateAnnouncement(parseInt(orgId), parseInt(teamId), decodedName, req.body.playerNumber || null)
+        : null;
       await queries.upsertWalkupSong({
         pgOrgId: parseInt(orgId),
         pgTeamId: parseInt(teamId),
-        playerName: decodeURIComponent(playerName),
+        playerName: decodedName,
         songType: 'upload',
         filePath,
         youtubeUrl: null,
@@ -971,7 +1010,8 @@ router.post('/teams/:orgId/:teamId/players/:playerName/walkup-song/upload',
         songTitle: req.body.title || null,
         artistName: req.body.artist || null,
         uploadedBy: req.user.id,
-        announce: req.body.announce !== '0' && req.body.announce !== 'false',
+        announce: shouldAnnounce,
+        announceAudioPath,
       });
       res.json({ status: 'ok', filePath });
     } catch (err) {
@@ -986,14 +1026,19 @@ router.post('/teams/:orgId/:teamId/players/:playerName/walkup-song/youtube',
   async (req, res) => {
     try {
       const { orgId, teamId, playerName } = req.params;
-      const { youtubeUrl, startSeconds, endSeconds, title, artist, announce } = req.body;
+      const { youtubeUrl, startSeconds, endSeconds, title, artist, announce, playerNumber } = req.body;
       if (!youtubeUrl) return res.status(400).json({ error: 'youtubeUrl required' });
       const videoId = youtubeUrl.match(/(?:watch\?v=|youtu\.be\/)([^&\s]+)/)?.[1];
       if (!videoId) return res.status(400).json({ error: 'Invalid YouTube URL' });
+      const shouldAnnounce = announce !== false && announce !== 0;
+      const decodedName = decodeURIComponent(playerName);
+      const announceAudioPath = shouldAnnounce
+        ? await generateAnnouncement(parseInt(orgId), parseInt(teamId), decodedName, playerNumber || null)
+        : null;
       await queries.upsertWalkupSong({
         pgOrgId: parseInt(orgId),
         pgTeamId: parseInt(teamId),
-        playerName: decodeURIComponent(playerName),
+        playerName: decodedName,
         songType: 'youtube',
         filePath: null,
         youtubeUrl,
@@ -1003,7 +1048,8 @@ router.post('/teams/:orgId/:teamId/players/:playerName/walkup-song/youtube',
         songTitle: title || null,
         artistName: artist || null,
         uploadedBy: req.user.id,
-        announce: announce !== false && announce !== 0,
+        announce: shouldAnnounce,
+        announceAudioPath,
       });
       res.json({ status: 'ok', videoId });
     } catch (err) {
@@ -1023,6 +1069,10 @@ router.delete('/teams/:orgId/:teamId/players/:playerName/walkup-song',
       if (song?.song_type === 'upload' && song?.file_path) {
         const fullPath = path.join(dataDir, 'walkups', song.file_path);
         if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
+      }
+      if (song?.announce_audio_path) {
+        const announcePath = path.join(dataDir, 'walkups', song.announce_audio_path);
+        if (fs.existsSync(announcePath)) fs.unlinkSync(announcePath);
       }
       await queries.deleteWalkupSong(parseInt(orgId), parseInt(teamId), name);
       res.json({ status: 'ok' });

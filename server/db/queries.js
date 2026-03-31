@@ -600,17 +600,18 @@ async function getWalkupSong(orgId, teamId, playerName) {
   return get(db, 'SELECT * FROM player_walkup_songs WHERE pg_org_id = ? AND pg_team_id = ? AND player_name = ?', [orgId, teamId, playerName]);
 }
 
-async function upsertWalkupSong({ pgOrgId, pgTeamId, playerName, songType, filePath, youtubeUrl, youtubeVideoId, startSeconds, endSeconds, songTitle, artistName, uploadedBy, announce = 1 }) {
+async function upsertWalkupSong({ pgOrgId, pgTeamId, playerName, songType, filePath, youtubeUrl, youtubeVideoId, startSeconds, endSeconds, songTitle, artistName, uploadedBy, announce = 1, announceAudioPath = null }) {
   const db = await getDb();
   run(db, `
-    INSERT INTO player_walkup_songs (pg_org_id, pg_team_id, player_name, song_type, file_path, youtube_url, youtube_video_id, start_seconds, end_seconds, song_title, artist_name, uploaded_by, announce)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO player_walkup_songs (pg_org_id, pg_team_id, player_name, song_type, file_path, youtube_url, youtube_video_id, start_seconds, end_seconds, song_title, artist_name, uploaded_by, announce, announce_audio_path)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(pg_org_id, pg_team_id, player_name) DO UPDATE SET
       song_type=excluded.song_type, file_path=excluded.file_path, youtube_url=excluded.youtube_url,
       youtube_video_id=excluded.youtube_video_id, start_seconds=excluded.start_seconds,
       end_seconds=excluded.end_seconds, song_title=excluded.song_title, artist_name=excluded.artist_name,
-      uploaded_by=excluded.uploaded_by, announce=excluded.announce, created_at=datetime('now')
-  `, [pgOrgId, pgTeamId, playerName, songType, filePath ?? null, youtubeUrl ?? null, youtubeVideoId ?? null, startSeconds, endSeconds, songTitle ?? null, artistName ?? null, uploadedBy ?? null, announce ? 1 : 0]);
+      uploaded_by=excluded.uploaded_by, announce=excluded.announce,
+      announce_audio_path=excluded.announce_audio_path, created_at=datetime('now')
+  `, [pgOrgId, pgTeamId, playerName, songType, filePath ?? null, youtubeUrl ?? null, youtubeVideoId ?? null, startSeconds, endSeconds, songTitle ?? null, artistName ?? null, uploadedBy ?? null, announce ? 1 : 0, announceAudioPath ?? null]);
 }
 
 async function deleteWalkupSong(orgId, teamId, playerName) {

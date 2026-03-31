@@ -333,8 +333,9 @@ function initSchema() {
   `);
   db.run('CREATE INDEX IF NOT EXISTS idx_sessions_expired ON sessions(expired_at)');
 
-  // Migration: add announce flag to walkup songs
+  // Migration: add announce flag and ElevenLabs audio path to walkup songs
   try { db.run("ALTER TABLE player_walkup_songs ADD COLUMN announce INTEGER NOT NULL DEFAULT 1"); } catch(e) {}
+  try { db.run("ALTER TABLE player_walkup_songs ADD COLUMN announce_audio_path TEXT"); } catch(e) {}
 
   // Migration: add global admin and contact email fields to users
   try { db.run("ALTER TABLE users ADD COLUMN is_global_admin INTEGER NOT NULL DEFAULT 0"); } catch(e) {}
