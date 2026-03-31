@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { getTeam, getSchedule, triggerScrape, syncTournament, getTournamentTeams } from '../api'
+import { useAuth } from '../context/AuthContext'
 import GameCard from '../components/GameCard'
 import LoadingSpinner from '../components/LoadingSpinner'
+import WalkupSongManager from '../components/WalkupSongManager'
 
 export default function Dashboard({ orgId, teamId, slug }) {
   const [team, setTeam] = useState(null)
@@ -11,6 +13,8 @@ export default function Dashboard({ orgId, teamId, slug }) {
   const [error, setError] = useState(null)
   const [scraping, setScraping] = useState(false)
   const [syncingTournament, setSyncingTournament] = useState(null)
+  const { user, hasTeamRole } = useAuth()
+  const canEdit = user && hasTeamRole(orgId, teamId, ['admin', 'scorekeeper'])
 
   useEffect(() => {
     loadData()
@@ -131,12 +135,12 @@ export default function Dashboard({ orgId, teamId, slug }) {
               {scraping ? (
                 <>
                   <svg className="diamond-spin w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
-                  Syncing All...
+                  Refreshing...
                 </>
               ) : (
                 <>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"/></svg>
-                  Sync All
+                  Refresh All
                 </>
               )}
             </button>
@@ -148,7 +152,7 @@ export default function Dashboard({ orgId, teamId, slug }) {
       {tournaments.length === 0 && (
         <div className="text-center py-8">
           <div className="font-display text-xl" style={{ color: 'var(--navy-muted)' }}>NO GAMES YET</div>
-          <p className="text-sm mt-1" style={{ color: 'var(--navy-muted)' }}>Tap Sync to load schedule data.</p>
+          <p className="text-sm mt-1" style={{ color: 'var(--navy-muted)' }}>Tap Refresh All to load schedule data.</p>
         </div>
       )}
 
@@ -178,13 +182,19 @@ export default function Dashboard({ orgId, teamId, slug }) {
                   )}
                 </div>
                 <div className="flex flex-col gap-1 ml-2 flex-shrink-0">
-                  {/* Sync this tournament */}
+                  {/* Refresh this tournament */}
                   <button
                     onClick={async () => {
                       setSyncingTournament(t.pg_event_id)
                       await syncTournament(t.pg_event_id).catch(() => {})
-                      // Wait a bit then refresh
-                      setTimeout(async () => { await loadData(); setSyncingTournament(null) }, 5000)
+                      // Poll until data refreshes (background scrape may take 10-30s)
+                      const poll = async (attempt = 0) => {
+                        if (attempt >= 4) { await loadData(); setSyncingTournament(null); return }
+                        await new Promise(r => setTimeout(r, 8000))
+                        await loadData()
+                        setSyncingTournament(null)
+                      }
+                      poll()
                     }}
                     disabled={syncingTournament === t.pg_event_id}
                     className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded"
@@ -192,7 +202,7 @@ export default function Dashboard({ orgId, teamId, slug }) {
                     <svg className={syncingTournament === t.pg_event_id ? 'diamond-spin' : ''} width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                       <path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"/>
                     </svg>
-                    {syncingTournament === t.pg_event_id ? 'Syncing' : 'Sync'}
+                    {syncingTournament === t.pg_event_id ? 'Refreshing' : 'Refresh'}
                   </button>
                   {(t.location || t.pg_url) && (
                     <a href={t.source === 'ft' && t.pg_url ? `${t.pg_url}/venues` : t.pg_url || '#'}
@@ -239,27 +249,27 @@ export default function Dashboard({ orgId, teamId, slug }) {
       {team?.players?.length > 0 && (
         <div>
           <div className="section-label mb-2">Roster</div>
-          <div className="card overflow-hidden">
-            <table className="w-full stat-table">
-              <thead>
-                <tr>
-                  <th className="text-left w-10">#</th>
-                  <th className="text-left">Name</th>
-                  <th className="text-left">Pos</th>
-                  <th className="text-left">B/T</th>
-                </tr>
-              </thead>
-              <tbody>
-                {team.players.map((p, i) => (
-                  <tr key={i}>
-                    <td className="font-display text-lg" style={{ color: 'var(--navy-muted)' }}>{p.number}</td>
-                    <td className="font-semibold">{p.name}</td>
-                    <td style={{ color: 'var(--navy-muted)' }}>{p.position}</td>
-                    <td style={{ color: 'var(--navy-muted)' }}>{p.bats}/{p.throws}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="card divide-y" style={{ borderColor: 'var(--border)' }}>
+            {team.players.map((p, i) => (
+              <div key={i} className="px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <span className="font-display text-lg w-8 shrink-0 text-right" style={{ color: 'var(--navy-muted)' }}>{p.number}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold">{p.name}</div>
+                    <div className="flex gap-2 text-xs mt-0.5" style={{ color: 'var(--navy-muted)' }}>
+                      {p.position && <span>{p.position}</span>}
+                      {(p.bats || p.throws) && <span>{p.bats}/{p.throws}</span>}
+                    </div>
+                    <WalkupSongManager
+                      orgId={orgId}
+                      teamId={teamId}
+                      playerName={p.name}
+                      canEdit={canEdit}
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
