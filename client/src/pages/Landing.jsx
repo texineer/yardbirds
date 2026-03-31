@@ -90,7 +90,7 @@ export default function Landing() {
       {/* Header */}
       <header className="relative overflow-hidden py-10 px-6 text-center" style={{ background: 'var(--navy)' }}>
         <div className="relative z-10 max-w-lg mx-auto">
-          <img src="/bleacherbox_logo.png" alt="BleacherBox" className="h-8 object-contain mx-auto mb-1" />
+          <img src="/bleacherbox_logo_sm.png" alt="BleacherBox" className="h-8 object-contain mx-auto mb-1" />
           <h1 className="font-display text-4xl text-white tracking-wider">BLEACHERBOX.APP</h1>
           <p className="text-sm mt-2 font-medium" style={{ color: 'var(--gold)' }}>
             Schedules, pitch counts & scouting for baseball parents

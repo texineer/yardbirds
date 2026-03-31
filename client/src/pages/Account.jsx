@@ -70,7 +70,7 @@ export default function Account() {
       <header className="relative overflow-hidden py-6 px-6" style={{ background: 'var(--navy)' }}>
         <div className="flex items-center justify-between max-w-2xl mx-auto">
           <Link to="/" className="flex items-center gap-2 no-underline">
-            <img src="/bleacherbox_logo.png" alt="BleacherBox" className="h-5 object-contain" />
+            <img src="/bleacherbox_logo_sm.png" alt="BleacherBox" className="h-5 object-contain" />
           </Link>
           <button onClick={logout}
             className="text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded"

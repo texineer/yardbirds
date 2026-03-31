@@ -84,7 +84,7 @@ function TeamLayout() {
         {/* Top bar: logo centered */}
         <div className="flex justify-center py-2">
           <Link to={`/${slug}`} className="no-underline">
-            <img src="/bleacherbox_logo.png" alt="BleacherBox" className="h-10 object-contain" />
+            <img src="/bleacherbox_logo_sm.png" alt="BleacherBox" className="h-10 object-contain" />
           </Link>
         </div>
         {/* Bottom bar: team name + user */}
