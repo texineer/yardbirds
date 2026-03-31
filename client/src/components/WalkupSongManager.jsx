@@ -73,6 +73,10 @@ export default function WalkupSongManager({ orgId, teamId, playerName, playerNum
     }
   }
 
+  function ytSrc(autoplay) {
+    return `https://www.youtube.com/embed/${song.youtube_video_id}?start=${Math.floor(song.start_seconds)}&end=${Math.floor(song.end_seconds)}&autoplay=${autoplay}&enablejsapi=1`
+  }
+
   function startClip() {
     if (!song) return
     if (song.song_type === 'upload') {
@@ -84,8 +88,12 @@ export default function WalkupSongManager({ orgId, teamId, playerName, playerNum
       stopTimerRef.current = setTimeout(stopPlayback, duration)
       audio.onended = stopPlayback
     } else {
-      const src = `https://www.youtube.com/embed/${song.youtube_video_id}?start=${Math.floor(song.start_seconds)}&end=${Math.floor(song.end_seconds)}&autoplay=1&enablejsapi=1`
-      if (iframeRef.current) iframeRef.current.src = src
+      // If already preloaded (autoplay=0), flip to autoplay=1 — video is buffered, starts instantly
+      if (iframeRef.current?.src?.includes(song.youtube_video_id)) {
+        iframeRef.current.src = ytSrc(1)
+      } else {
+        if (iframeRef.current) iframeRef.current.src = ytSrc(1)
+      }
       const duration = (song.end_seconds - song.start_seconds) * 1000
       stopTimerRef.current = setTimeout(stopPlayback, duration)
     }
@@ -96,6 +104,10 @@ export default function WalkupSongManager({ orgId, teamId, playerName, playerNum
     if (!song) return
     setPlaying(true)
     if (song.announce) {
+      // Preload YouTube in background while announcement plays
+      if (song.song_type === 'youtube' && iframeRef.current) {
+        iframeRef.current.src = ytSrc(0)
+      }
       announcePlayer(startClip)
     } else {
       startClip()
