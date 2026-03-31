@@ -12,6 +12,7 @@ import TournamentBracket from './pages/TournamentBracket'
 import Landing from './pages/Landing'
 import Auth from './pages/Auth'
 import Account from './pages/Account'
+import Features from './pages/Features'
 import ScoreGame from './pages/ScoreGame'
 import LineupSetup from './pages/LineupSetup'
 import Scorebook from './pages/Scorebook'
@@ -19,6 +20,7 @@ import LiveScoreboard from './pages/LiveScoreboard'
 import TeamMembers from './pages/TeamMembers'
 import Roster from './pages/Roster'
 import BleacherBoxDJ from './pages/BleacherBoxDJ'
+import BaseballCard from './pages/BaseballCard'
 import LoadingSpinner from './components/LoadingSpinner'
 
 function App() {
@@ -31,6 +33,7 @@ function App() {
         <Route path="/" element={<Landing />} />
         <Route path="/login" element={<Auth />} />
         <Route path="/account" element={<Account />} />
+        <Route path="/features" element={<Features />} />
         <Route path="/score" element={<ScoreGame />} />
         {/* Team pages — with header/nav */}
         <Route path="/:slug/*" element={<TeamLayout />} />
@@ -75,6 +78,7 @@ function TeamLayout() {
   const navItems = [
     { path: `/${slug}`, label: 'Home', icon: HomeIcon },
     { path: `/${slug}/dj`, label: 'DJ', icon: DJIcon },
+    { path: `/${slug}/baseball-card`, label: 'Card', icon: CardIcon },
     ...(isAdmin ? [{ path: `/${slug}/members`, label: 'Members', icon: MembersIcon }] : []),
     { path: `/${slug}/search`, label: 'Teams', icon: SearchIcon },
   ]
@@ -87,22 +91,27 @@ function TeamLayout() {
           <Link to={`/${slug}`} className="no-underline flex-shrink-0">
             <img src="/bleacherbox_logo_sm.png" alt="BleacherBox" className="h-12 object-contain" />
           </Link>
-          {/* User avatar → account page */}
-          {user ? (
-            <Link to="/account" className="flex items-center gap-1.5 no-underline px-2 py-1 rounded flex-shrink-0"
-              style={{ background: 'rgba(255,255,255,0.1)' }}>
-              <span className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold"
-                style={{ background: 'var(--gold)', color: 'var(--navy)' }}>
-                {(user.display_name || user.email).charAt(0).toUpperCase()}
-              </span>
-              <span className="text-[10px] font-semibold text-white/60 hidden sm:inline">{user.display_name || user.email}</span>
+          {/* Features + User avatar */}
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <Link to="/features" className="text-[10px] font-bold uppercase tracking-wider no-underline px-2 py-1 rounded"
+              style={{ color: 'var(--gold)', background: 'rgba(255,255,255,0.08)' }}>
+              Features
             </Link>
-          ) : (
-            <Link to="/login" className="text-[10px] font-bold uppercase tracking-wider no-underline px-3 py-1.5 rounded flex-shrink-0"
-              style={{ color: 'var(--navy)', background: 'var(--gold)' }}>
-              Sign In
-            </Link>
-          )}
+            {user ? (
+              <Link to="/account" className="flex items-center gap-1.5 no-underline px-2 py-1 rounded"
+                style={{ background: 'rgba(255,255,255,0.1)' }}>
+                <span className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold"
+                  style={{ background: 'var(--gold)', color: 'var(--navy)' }}>
+                  {(user.display_name || user.email).charAt(0).toUpperCase()}
+                </span>
+              </Link>
+            ) : (
+              <Link to="/login" className="text-[10px] font-bold uppercase tracking-wider no-underline px-2 py-1.5 rounded"
+                style={{ color: 'var(--navy)', background: 'var(--gold)' }}>
+                Sign In
+              </Link>
+            )}
+          </div>
         </div>
 
         {/* Team switcher dropdown */}
@@ -144,6 +153,7 @@ function TeamLayout() {
           <Route path="/roster" element={<Roster />} />
           <Route path="/dj" element={<BleacherBoxDJ orgId={team.pg_org_id} teamId={team.pg_team_id} slug={slug} />} />
           <Route path="/members" element={<TeamMembers orgId={team.pg_org_id} teamId={team.pg_team_id} />} />
+          <Route path="/baseball-card" element={<BaseballCard orgId={team.pg_org_id} teamId={team.pg_team_id} />} />
         </Routes>
       </main>
 
@@ -224,6 +234,18 @@ function MembersIcon({ active }) {
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
       stroke={active ? 'var(--gold-dark)' : 'currentColor'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
+    </svg>
+  )
+}
+
+function CardIcon({ active }) {
+  const c = active ? 'var(--gold-dark)' : 'currentColor'
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+      stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <circle cx="12" cy="9" r="3" />
+      <path d="M6 21v-1a6 6 0 0112 0v1" />
     </svg>
   )
 }
