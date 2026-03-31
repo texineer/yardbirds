@@ -487,28 +487,49 @@ async function touchTournamentLastScraped(eventId) {
   run(db, "UPDATE tournaments SET last_scraped = datetime('now') WHERE pg_event_id = ?", [eventId]);
 }
 
+// Check if a bracket team name matches our team name
+// Uses significant words (>3 chars, not age groups) for matching
+function bracketNameMatches(bracketName, teamName) {
+  const noise = new Set(['the', 'team', 'baseball', 'club']);
+  const getWords = (s) => s.toLowerCase().split(/[\s-]+/).filter(w => w.length > 3 && !noise.has(w) && !/^\d+u$/i.test(w));
+  const teamWords = getWords(teamName);
+  const bracketWords = getWords(bracketName);
+  if (teamWords.length === 0 || bracketWords.length === 0) return false;
+  // Require at least one significant word match
+  const matches = teamWords.filter(w => bracketWords.some(bw => bw.includes(w) || w.includes(bw)));
+  return matches.length >= 1;
+}
+
 // Claim unmatched bracket games for a team by name matching in "Team A vs Team B" format
 async function claimBracketGamesForTeam(eventId, orgId, teamId, teamName) {
   const db = await getDb();
-  const tn = teamName.toLowerCase();
-  const bracketGames = all(db, `SELECT * FROM games WHERE pg_event_id = ? AND game_type = 'bracket'`, [eventId]);
+  // First, reset any bracket games in this tournament that were wrongly claimed by this team
+  // (they still have "vs" in opponent_name or team_org_id matches but name doesn't)
+  const ourBracketGames = all(db, `SELECT * FROM games WHERE pg_event_id = ? AND game_type = 'bracket' AND team_org_id = ? AND team_id = ?`, [eventId, orgId, teamId]);
+  for (const g of ourBracketGames) {
+    // If opponent still has "vs" it was never properly claimed
+    if (g.opponent_name && g.opponent_name.includes(' vs ')) {
+      const parts = g.opponent_name.split(' vs ').map(s => s.trim());
+      const weAre0 = bracketNameMatches(parts[0], teamName);
+      const weAre1 = parts[1] ? bracketNameMatches(parts[1], teamName) : false;
+      if (!weAre0 && !weAre1) {
+        // Wrong team — unclaim
+        run(db, `UPDATE games SET team_org_id=0, team_id=0 WHERE id=?`, [g.id]);
+      }
+    }
+  }
+
+  // Now claim unmatched bracket games
+  const bracketGames = all(db, `SELECT * FROM games WHERE pg_event_id = ? AND game_type = 'bracket' AND team_org_id = 0`, [eventId]);
   for (const g of bracketGames) {
-    const oppName = (g.opponent_name || '').toLowerCase();
     const parts = (g.opponent_name || '').split(' vs ').map(s => s.trim());
     if (parts.length !== 2) continue;
 
-    const p0 = parts[0].toLowerCase();
-    const p1 = parts[1].toLowerCase();
-    const weAre0 = p0.includes(tn) || tn.includes(p0);
-    const weAre1 = p1.includes(tn) || tn.includes(p1);
+    const weAre0 = bracketNameMatches(parts[0], teamName);
+    const weAre1 = bracketNameMatches(parts[1], teamName);
     if (!weAre0 && !weAre1) continue;
 
-    // Already claimed by another team — skip
-    if (g.team_org_id !== 0 && g.team_org_id !== orgId) continue;
-
     const opponent = weAre0 ? parts[1] : parts[0];
-    // score_us/score_them in bracket table: score_us=home, score_them=away
-    // Home team is listed first in "X vs Y" from the bracket scraper
     let scoreUs = weAre0 ? g.score_us : g.score_them;
     let scoreThem = weAre0 ? g.score_them : g.score_us;
     let result = null;
