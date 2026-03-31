@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { getTeam, getSchedule, triggerScrape, getTournamentTeams } from '../api'
+import { getTeam, getSchedule, triggerScrape, syncTournament, getTournamentTeams } from '../api'
 import GameCard from '../components/GameCard'
 import LoadingSpinner from '../components/LoadingSpinner'
 
@@ -10,6 +10,7 @@ export default function Dashboard({ orgId, teamId, slug }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [scraping, setScraping] = useState(false)
+  const [syncingTournament, setSyncingTournament] = useState(null)
 
   useEffect(() => {
     loadData()
@@ -130,12 +131,12 @@ export default function Dashboard({ orgId, teamId, slug }) {
               {scraping ? (
                 <>
                   <svg className="diamond-spin w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
-                  Syncing...
+                  Syncing All...
                 </>
               ) : (
                 <>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"/></svg>
-                  Sync
+                  Sync All
                 </>
               )}
             </button>
@@ -158,7 +159,7 @@ export default function Dashboard({ orgId, teamId, slug }) {
           <div key={t.pg_event_id}>
             {/* Tournament header */}
             <div className="rounded-t-xl px-4 py-3" style={{ background: 'var(--navy)' }}>
-              <div className="flex items-center justify-between">
+              <div className="flex items-start justify-between">
                 <div className="flex-1 min-w-0">
                   {t.pg_url ? (
                     <a href={t.pg_url} target="_blank" rel="noopener" className="font-display text-lg text-white leading-tight truncate block no-underline hover:underline">{t.name}</a>
@@ -170,8 +171,29 @@ export default function Dashboard({ orgId, teamId, slug }) {
                       {formatDate(t.start_date)}{t.end_date && t.end_date !== t.start_date ? ` — ${formatDate(t.end_date)}` : ''}
                     </div>
                   )}
+                  {t.last_scraped && (
+                    <div className="text-[9px] text-white/30 mt-0.5">
+                      Updated {formatTimeAgo(t.last_scraped)}
+                    </div>
+                  )}
                 </div>
-                <div className="flex flex-col gap-1.5 ml-2 flex-shrink-0">
+                <div className="flex flex-col gap-1 ml-2 flex-shrink-0">
+                  {/* Sync this tournament */}
+                  <button
+                    onClick={async () => {
+                      setSyncingTournament(t.pg_event_id)
+                      await syncTournament(t.pg_event_id).catch(() => {})
+                      // Wait a bit then refresh
+                      setTimeout(async () => { await loadData(); setSyncingTournament(null) }, 5000)
+                    }}
+                    disabled={syncingTournament === t.pg_event_id}
+                    className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded"
+                    style={{ background: 'rgba(255,255,255,0.1)', color: syncingTournament === t.pg_event_id ? 'var(--gold)' : 'white', opacity: syncingTournament === t.pg_event_id ? 0.7 : 1 }}>
+                    <svg className={syncingTournament === t.pg_event_id ? 'diamond-spin' : ''} width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                      <path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"/>
+                    </svg>
+                    {syncingTournament === t.pg_event_id ? 'Syncing' : 'Sync'}
+                  </button>
                   {(t.location || t.pg_url) && (
                     <a href={t.source === 'ft' && t.pg_url ? `${t.pg_url}/venues` : t.pg_url || '#'}
                       target="_blank" rel="noopener"
@@ -323,6 +345,22 @@ function TeamsInTournament({ eventId, pgUrl, source, ageGroup }) {
       )}
     </div>
   )
+}
+
+function formatTimeAgo(dateStr) {
+  if (!dateStr) return ''
+  try {
+    const d = new Date(dateStr + (dateStr.includes('T') ? '' : 'T00:00:00Z'))
+    const now = new Date()
+    const diffMs = now - d
+    const mins = Math.floor(diffMs / 60000)
+    if (mins < 1) return 'just now'
+    if (mins < 60) return `${mins}m ago`
+    const hours = Math.floor(mins / 60)
+    if (hours < 24) return `${hours}h ago`
+    const days = Math.floor(hours / 24)
+    return `${days}d ago`
+  } catch { return dateStr }
 }
 
 function formatDate(dateStr) {

@@ -50,6 +50,10 @@ export function getTournamentFullSchedule(eventId) {
   return fetchJson(`/tournaments/${eventId}/full-schedule`);
 }
 
+export function syncTournament(eventId) {
+  return fetch(`${API_BASE}/tournaments/${eventId}/sync`, { method: 'POST', credentials: 'include' }).then(r => r.json());
+}
+
 export function getTournamentTeams(eventId, ageGroup) {
   const params = ageGroup ? `?ageGroup=${encodeURIComponent(ageGroup)}` : '';
   return fetchJson(`/tournaments/${eventId}/teams${params}`);

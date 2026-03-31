@@ -219,6 +219,117 @@ router.get('/tournaments/:eventId/full-schedule', async (req, res) => {
   }
 });
 
+// POST /api/tournaments/:eventId/sync - re-scrape a single tournament
+router.post('/tournaments/:eventId/sync', async (req, res) => {
+  try {
+    const eventId = parseInt(req.params.eventId);
+    const tournament = await queries.getTournament(eventId);
+    if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
+
+    res.json({ status: 'started' });
+
+    // Run in background
+    (async () => {
+      try {
+        if (tournament.source === 'ft') {
+          // FT tournaments: re-scrape via the FT scraper for each registered team
+          const allTeams = await queries.getAllTeams();
+          for (const team of allTeams) {
+            if (!team.ft_team_uuid) continue;
+            const { scrapeFtEventSchedule } = require('../scrapers/fivetool');
+            // Extract slug from pg_url
+            const slugMatch = tournament.pg_url?.match(/\/events\/([^/]+)/);
+            if (slugMatch) {
+              const games = await scrapeFtEventSchedule(slugMatch[1], team.name);
+              const { ftEventHash } = require('../scrapers/fivetool');
+              for (const g of games) {
+                const sourceKey = `ft-${eventId}-${g.gameDate}-${g.gameTime}-${g.opponentName}`;
+                await queries.upsertFtGame({
+                  sourceGameKey: sourceKey, pgEventId: eventId,
+                  teamOrgId: team.pg_org_id, teamId: team.pg_team_id,
+                  opponentName: g.opponentName, gameDate: g.gameDate, gameTime: g.gameTime,
+                  field: g.field, scoreUs: g.scoreUs, scoreThem: g.scoreThem, result: g.result,
+                });
+              }
+            }
+          }
+        } else {
+          // PG tournaments: re-scrape schedule, pitch counts, and game scores
+          const { scrapeTournamentPage, scrapePitchingReport, scrapeTournamentSchedule } = require('../scrapers/tournament');
+          const { scrapeGameScore } = require('../scrapers/game');
+
+          await scrapeTournamentPage(eventId);
+          const scheduledGames = await scrapeTournamentSchedule(eventId);
+
+          // Match and save games for all registered teams
+          const allTeams = await queries.getAllTeams();
+          for (const team of allTeams) {
+            const teamName = (team.name || '').toLowerCase();
+            for (const sg of scheduledGames) {
+              const teamEntry = sg.teams.find(t =>
+                (t.orgId === team.pg_org_id && t.teamId === team.pg_team_id) ||
+                (teamName && t.name && (t.name.toLowerCase().includes(teamName) || teamName.includes(t.name.toLowerCase())))
+              );
+              if (!teamEntry) continue;
+              const opponent = sg.teams.find(t => t !== teamEntry) || { name: 'TBD' };
+              await queries.upsertGame({
+                pgGameId: sg.pgGameId, pgEventId: eventId,
+                teamOrgId: team.pg_org_id, teamId: team.pg_team_id,
+                opponentName: opponent.name, opponentOrgId: opponent.orgId, opponentTeamId: opponent.teamId,
+                gameDate: sg.gameDate || '', gameTime: sg.gameTime, field: sg.field,
+                scoreUs: null, scoreThem: null, result: null,
+                pgBoxUrl: sg.pgBoxUrl, pgRecapUrl: '',
+              });
+            }
+          }
+
+          // Refresh pitch counts
+          const pitchData = await scrapePitchingReport(eventId);
+          if (pitchData.length > 0) await queries.clearTournamentPitchCounts(eventId);
+          for (const entry of pitchData) {
+            await queries.insertPitchCount({
+              gameId: null, pgEventId: eventId,
+              playerName: entry.playerName, teamName: entry.teamName,
+              pitches: entry.pitches, innings: entry.innings,
+              strikeouts: entry.strikeouts, walks: entry.walks,
+            });
+          }
+
+          // Fetch missing game scores
+          const games = await queries.getTournamentGames(eventId);
+          for (const game of games) {
+            if (game.pg_game_id && !game.result) {
+              try {
+                const score = await scrapeGameScore(game.pg_game_id);
+                if (score?.isFinal) {
+                  const team = await queries.getTeam(game.team_org_id, game.team_id);
+                  const tn = (team?.name || '').toLowerCase();
+                  const homeIsUs = score.homeName.toLowerCase().includes(tn) || tn.includes(score.homeName.toLowerCase());
+                  const scoreUs = homeIsUs ? score.homeScore : score.visitorScore;
+                  const scoreThem = homeIsUs ? score.visitorScore : score.homeScore;
+                  const result = scoreUs > scoreThem ? 'W' : scoreUs < scoreThem ? 'L' : 'T';
+                  await queries.upsertGame({
+                    pgGameId: game.pg_game_id, pgEventId: eventId,
+                    teamOrgId: game.team_org_id, teamId: game.team_id,
+                    opponentName: game.opponent_name, opponentOrgId: game.opponent_org_id, opponentTeamId: game.opponent_team_id,
+                    gameDate: game.game_date, gameTime: game.game_time, field: game.field,
+                    scoreUs, scoreThem, result, pgBoxUrl: game.pg_box_url, pgRecapUrl: game.pg_recap_url || '',
+                  });
+                }
+              } catch (e) {}
+            }
+          }
+        }
+        console.log(`[api] Tournament ${eventId} sync complete`);
+      } catch (err) {
+        console.error(`[api] Tournament ${eventId} sync error: ${err.message}`);
+      }
+    })();
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/tournaments/:eventId/teams - get teams registered for a tournament
 router.get('/tournaments/:eventId/teams', async (req, res) => {
   try {
