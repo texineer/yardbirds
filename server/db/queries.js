@@ -487,17 +487,12 @@ async function touchTournamentLastScraped(eventId) {
   run(db, "UPDATE tournaments SET last_scraped = datetime('now') WHERE pg_event_id = ?", [eventId]);
 }
 
-// Check if a bracket team name matches our team name
-// Uses significant words (>3 chars, not age groups) for matching
+// Check if a bracket team name matches our team name — exact match (case-insensitive)
 function bracketNameMatches(bracketName, teamName) {
-  const noise = new Set(['the', 'team', 'baseball', 'club']);
-  const getWords = (s) => s.toLowerCase().split(/[\s-]+/).filter(w => w.length > 3 && !noise.has(w) && !/^\d+u$/i.test(w));
-  const teamWords = getWords(teamName);
-  const bracketWords = getWords(bracketName);
-  if (teamWords.length === 0 || bracketWords.length === 0) return false;
-  // Require at least one significant word match
-  const matches = teamWords.filter(w => bracketWords.some(bw => bw.includes(w) || w.includes(bw)));
-  return matches.length >= 1;
+  if (!bracketName || !teamName) return false;
+  const bn = bracketName.trim().toLowerCase();
+  const tn = teamName.trim().toLowerCase();
+  return bn === tn;
 }
 
 // Claim bracket games for a team. Processes ALL bracket games with "vs" in the name.
