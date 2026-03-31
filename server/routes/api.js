@@ -323,6 +323,30 @@ router.post('/tournaments/:eventId/sync', async (req, res) => {
             });
           }
 
+          // Scrape bracket games
+          const { scrapeBracketGames } = require('../scrapers/tournament');
+          const bracketGames = await scrapeBracketGames(eventId);
+          for (const g of bracketGames) {
+            if (g.homeTeam && g.awayTeam) {
+              await queries.upsertBracketGame({
+                pgGameId: g.pgGameId, pgEventId: eventId,
+                teamOrgId: 0, teamId: 0,
+                opponentName: `${g.homeTeam.name} vs ${g.awayTeam.name}`,
+                gameDate: g.gameDate, gameTime: g.gameTime, field: g.field,
+                scoreUs: g.homeTeam.score, scoreThem: g.awayTeam.score, result: null,
+                bracketName: g.bracketName, bracketRound: g.round,
+                homeSeed: g.homeTeam.seed, awaySeed: g.awayTeam.seed,
+              });
+            }
+          }
+
+          // Claim bracket games for all registered teams
+          for (const team of allTeams) {
+            if (team.name) {
+              await queries.claimBracketGamesForTeam(eventId, team.pg_org_id, team.pg_team_id, team.name);
+            }
+          }
+
           // Fetch missing game scores
           const games = await queries.getTournamentGames(eventId);
           for (const game of games) {
@@ -826,6 +850,128 @@ router.post('/scrape', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// ── Soundboard + Playlist ─────────────────────────────────────────────────
+
+const SOUNDBOARD_DEFAULTS = [
+  { key: 'mound_visit', label: 'Mound Visit', emoji: '⏰', hint: 'Search: "Jeopardy think music"',               suggestedStart: 0,  suggestedEnd: 20 },
+  { key: 'bad_call',    label: 'Bad Call',     emoji: '🙈', hint: 'Search: "3 blind mice nursery rhyme"',        suggestedStart: 0,  suggestedEnd: 12 },
+  { key: 'wah_wah',     label: 'Wah Wah',      emoji: '😢', hint: 'Search: "sad trombone sound effect"',         suggestedStart: 0,  suggestedEnd: 5  },
+  { key: 'charge',      label: 'CHARGE!',       emoji: '🎺', hint: 'Search: "charge bugle baseball stadium"',    suggestedStart: 0,  suggestedEnd: 5  },
+  { key: 'strikeout',   label: 'Strikeout',     emoji: '🔥', hint: 'Search: "strikeout sound effect baseball"',  suggestedStart: 0,  suggestedEnd: 5  },
+  { key: 'walk',        label: 'Walk',          emoji: '🚶', hint: 'Search: "na na hey hey kiss him goodbye"',   suggestedStart: 0,  suggestedEnd: 10 },
+  { key: 'rally',       label: 'RALLY!',        emoji: '⚡', hint: 'Search: "we will rock you queen stomp"',    suggestedStart: 0,  suggestedEnd: 18 },
+  { key: 'ymca',        label: 'YMCA',          emoji: '🕺', hint: 'Search: "YMCA village people chorus"',      suggestedStart: 46, suggestedEnd: 65 },
+  { key: 'homerun',     label: 'Home Run!',     emoji: '💥', hint: 'Search: "Sweet Caroline Neil Diamond"',     suggestedStart: 62, suggestedEnd: 80 },
+  { key: 'seventh',     label: '7th Inning',    emoji: '⚾', hint: 'Search: "take me out to the ballgame"',     suggestedStart: 0,  suggestedEnd: 30 },
+  { key: 'circus',      label: 'Clown Show',    emoji: '🎪', hint: 'Search: "circus calliope clown music"',     suggestedStart: 0,  suggestedEnd: 10 },
+  { key: 'walk_off',    label: 'Walk-Off!',     emoji: '🏆', hint: 'Search: "eye of the tiger survivor intro"', suggestedStart: 0,  suggestedEnd: 20 },
+];
+
+// GET /api/teams/:orgId/:teamId/soundboard (public)
+router.get('/teams/:orgId/:teamId/soundboard', async (req, res) => {
+  try {
+    const rows = await queries.getTeamSoundboard(parseInt(req.params.orgId), parseInt(req.params.teamId));
+    const byKey = {};
+    for (const r of rows) byKey[r.button_key] = r;
+    const merged = SOUNDBOARD_DEFAULTS.map((d, i) => ({
+      ...d, sort_order: i, ...(byKey[d.key] || {}), button_key: d.key,
+    }));
+    res.json(merged);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/teams/:orgId/:teamId/soundboard/:buttonKey
+router.put('/teams/:orgId/:teamId/soundboard/:buttonKey',
+  requireTeamRole(['admin', 'scorekeeper']),
+  async (req, res) => {
+    try {
+      const { orgId, teamId, buttonKey } = req.params;
+      const { youtubeUrl, startSeconds, endSeconds } = req.body;
+      const videoId = youtubeUrl?.match(/(?:watch\?v=|youtu\.be\/)([^&\s]+)/)?.[1] || null;
+      const def = SOUNDBOARD_DEFAULTS.find(d => d.key === buttonKey);
+      if (!def) return res.status(404).json({ error: 'Unknown button key' });
+      await queries.upsertSoundboardButton({
+        pgOrgId: parseInt(orgId), pgTeamId: parseInt(teamId),
+        buttonKey, label: def.label, emoji: def.emoji,
+        youtubeVideoId: videoId,
+        startSeconds: parseFloat(startSeconds) ?? def.suggestedStart,
+        endSeconds: parseFloat(endSeconds) ?? def.suggestedEnd,
+        sortOrder: SOUNDBOARD_DEFAULTS.indexOf(def),
+      });
+      res.json({ status: 'ok', videoId });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  }
+);
+
+// GET /api/teams/:orgId/:teamId/playlist (public)
+router.get('/teams/:orgId/:teamId/playlist', async (req, res) => {
+  try {
+    const songs = await queries.getTeamPlaylist(parseInt(req.params.orgId), parseInt(req.params.teamId));
+    res.json(songs);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/teams/:orgId/:teamId/playlist
+router.post('/teams/:orgId/:teamId/playlist',
+  requireTeamRole(['admin', 'scorekeeper']),
+  async (req, res) => {
+    try {
+      const { orgId, teamId } = req.params;
+      const { youtubeUrl, songTitle, artistName, startSeconds, endSeconds } = req.body;
+      if (!songTitle) return res.status(400).json({ error: 'songTitle required' });
+      const videoId = youtubeUrl?.match(/(?:watch\?v=|youtu\.be\/)([^&\s]+)/)?.[1] || null;
+      const id = await queries.insertPlaylistSong({
+        pgOrgId: parseInt(orgId), pgTeamId: parseInt(teamId),
+        songTitle, artistName: artistName || null, youtubeVideoId: videoId,
+        startSeconds: parseFloat(startSeconds) || 0,
+        endSeconds: parseFloat(endSeconds) || 180,
+      });
+      res.json({ status: 'ok', id });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  }
+);
+
+// PUT /api/teams/:orgId/:teamId/playlist/:id
+router.put('/teams/:orgId/:teamId/playlist/:id',
+  requireTeamRole(['admin', 'scorekeeper']),
+  async (req, res) => {
+    try {
+      const { youtubeUrl, songTitle, artistName, startSeconds, endSeconds } = req.body;
+      const videoId = youtubeUrl?.match(/(?:watch\?v=|youtu\.be\/)([^&\s]+)/)?.[1] || null;
+      await queries.updatePlaylistSong({
+        id: parseInt(req.params.id), songTitle, artistName: artistName || null,
+        youtubeVideoId: videoId,
+        startSeconds: parseFloat(startSeconds) || 0,
+        endSeconds: parseFloat(endSeconds) || 180,
+      });
+      res.json({ status: 'ok' });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  }
+);
+
+// DELETE /api/teams/:orgId/:teamId/playlist/:id
+router.delete('/teams/:orgId/:teamId/playlist/:id',
+  requireTeamRole(['admin', 'scorekeeper']),
+  async (req, res) => {
+    try {
+      await queries.deletePlaylistSong(parseInt(req.params.id));
+      res.json({ status: 'ok' });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  }
+);
 
 // ── Walkup Songs ──────────────────────────────────────────────────────────
 

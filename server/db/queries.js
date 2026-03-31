@@ -487,6 +487,40 @@ async function touchTournamentLastScraped(eventId) {
   run(db, "UPDATE tournaments SET last_scraped = datetime('now') WHERE pg_event_id = ?", [eventId]);
 }
 
+// Claim unmatched bracket games for a team by name matching in "Team A vs Team B" format
+async function claimBracketGamesForTeam(eventId, orgId, teamId, teamName) {
+  const db = await getDb();
+  const tn = teamName.toLowerCase();
+  const bracketGames = all(db, `SELECT * FROM games WHERE pg_event_id = ? AND game_type = 'bracket'`, [eventId]);
+  for (const g of bracketGames) {
+    const oppName = (g.opponent_name || '').toLowerCase();
+    const parts = (g.opponent_name || '').split(' vs ').map(s => s.trim());
+    if (parts.length !== 2) continue;
+
+    const p0 = parts[0].toLowerCase();
+    const p1 = parts[1].toLowerCase();
+    const weAre0 = p0.includes(tn) || tn.includes(p0);
+    const weAre1 = p1.includes(tn) || tn.includes(p1);
+    if (!weAre0 && !weAre1) continue;
+
+    // Already claimed by another team — skip
+    if (g.team_org_id !== 0 && g.team_org_id !== orgId) continue;
+
+    const opponent = weAre0 ? parts[1] : parts[0];
+    // score_us/score_them in bracket table: score_us=home, score_them=away
+    // Home team is listed first in "X vs Y" from the bracket scraper
+    let scoreUs = weAre0 ? g.score_us : g.score_them;
+    let scoreThem = weAre0 ? g.score_them : g.score_us;
+    let result = null;
+    if (scoreUs != null && scoreThem != null) {
+      result = scoreUs > scoreThem ? 'W' : scoreUs < scoreThem ? 'L' : 'T';
+    }
+
+    run(db, `UPDATE games SET team_org_id=?, team_id=?, opponent_name=?, score_us=?, score_them=?, result=? WHERE id=?`,
+      [orgId, teamId, opponent, scoreUs, scoreThem, result, g.id]);
+  }
+}
+
 async function getBracketGames(eventId) {
   const db = await getDb();
   return all(db, `
@@ -571,6 +605,56 @@ async function upsertWalkupSong({ pgOrgId, pgTeamId, playerName, songType, fileP
 async function deleteWalkupSong(orgId, teamId, playerName) {
   const db = await getDb();
   run(db, 'DELETE FROM player_walkup_songs WHERE pg_org_id = ? AND pg_team_id = ? AND player_name = ?', [orgId, teamId, playerName]);
+}
+
+// ── Soundboard ────────────────────────────────────────────────────────────
+
+async function getTeamSoundboard(orgId, teamId) {
+  const db = await getDb();
+  return all(db, 'SELECT * FROM team_soundboard WHERE pg_org_id = ? AND pg_team_id = ? ORDER BY sort_order', [orgId, teamId]);
+}
+
+async function upsertSoundboardButton({ pgOrgId, pgTeamId, buttonKey, label, emoji, youtubeVideoId, startSeconds, endSeconds, sortOrder }) {
+  const db = await getDb();
+  run(db, `
+    INSERT INTO team_soundboard (pg_org_id, pg_team_id, button_key, label, emoji, youtube_video_id, start_seconds, end_seconds, sort_order)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(pg_org_id, pg_team_id, button_key) DO UPDATE SET
+      label=excluded.label, emoji=excluded.emoji, youtube_video_id=excluded.youtube_video_id,
+      start_seconds=excluded.start_seconds, end_seconds=excluded.end_seconds, sort_order=excluded.sort_order
+  `, [pgOrgId, pgTeamId, buttonKey, label, emoji ?? null, youtubeVideoId ?? null, startSeconds, endSeconds, sortOrder ?? 0]);
+}
+
+// ── Playlist ──────────────────────────────────────────────────────────────
+
+async function getTeamPlaylist(orgId, teamId) {
+  const db = await getDb();
+  return all(db, 'SELECT * FROM team_playlist WHERE pg_org_id = ? AND pg_team_id = ? ORDER BY sort_order, id', [orgId, teamId]);
+}
+
+async function insertPlaylistSong({ pgOrgId, pgTeamId, songTitle, artistName, youtubeVideoId, startSeconds, endSeconds, sortOrder }) {
+  const db = await getDb();
+  const maxOrder = get(db, 'SELECT MAX(sort_order) as m FROM team_playlist WHERE pg_org_id = ? AND pg_team_id = ?', [pgOrgId, pgTeamId]);
+  const nextOrder = sortOrder ?? ((maxOrder?.m ?? -1) + 1);
+  db.run(
+    `INSERT INTO team_playlist (pg_org_id, pg_team_id, song_title, artist_name, youtube_video_id, start_seconds, end_seconds, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [pgOrgId, pgTeamId, songTitle, artistName ?? null, youtubeVideoId ?? null, startSeconds ?? 0, endSeconds ?? 180, nextOrder]
+  );
+  const result = db.exec('SELECT last_insert_rowid() as id');
+  const id = result[0].values[0][0];
+  saveDb();
+  return id;
+}
+
+async function updatePlaylistSong({ id, songTitle, artistName, youtubeVideoId, startSeconds, endSeconds }) {
+  const db = await getDb();
+  run(db, `UPDATE team_playlist SET song_title=?, artist_name=?, youtube_video_id=?, start_seconds=?, end_seconds=? WHERE id=?`,
+    [songTitle, artistName ?? null, youtubeVideoId ?? null, startSeconds ?? 0, endSeconds ?? 180, id]);
+}
+
+async function deletePlaylistSong(id) {
+  const db = await getDb();
+  run(db, 'DELETE FROM team_playlist WHERE id = ?', [id]);
 }
 
 // ── Users & Roles ─────────────────────────────────────────────────────────
@@ -658,10 +742,14 @@ module.exports = {
   getInningScores, upsertInningScore,
   getPlateAppearances, insertPlateAppearance, updatePlateAppearanceOutcome,
   logPitch, getLivePitchCounts, deleteLastPitch, getFullScorebookState, getGameSprayChart, getGameScore, getHalfInningStats,
-  touchTournamentLastScraped, getBracketGames, upsertBracketGame,
+  touchTournamentLastScraped, claimBracketGamesForTeam, getBracketGames, upsertBracketGame,
   // Auth
   createUser, getUserByEmail, getUserById, getUserTeamRoles, getUserRoleForTeam,
   setUserTeamRole, removeUserTeamRole, getTeamMembers, getTeamFromGameId,
   // Walkup Songs
   getWalkupSong, upsertWalkupSong, deleteWalkupSong,
+  // Soundboard
+  getTeamSoundboard, upsertSoundboardButton,
+  // Playlist
+  getTeamPlaylist, insertPlaylistSong, updatePlaylistSong, deletePlaylistSong,
 };

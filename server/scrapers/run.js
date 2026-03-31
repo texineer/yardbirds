@@ -124,7 +124,37 @@ async function scrapeAll(orgId, teamId, year = DEFAULT_YEAR, ftTeamUuid = null, 
       }
     }
 
-    // Step 3: Scrape Five Tool Youth
+    // Step 3: Scrape bracket games and claim for our team
+    console.log('\n--- Bracket Games ---');
+    const { scrapeBracketGames } = require('./tournament');
+    const team = await queries.getTeam(orgId, teamId);
+    for (const tournament of teamResult.tournaments) {
+      try {
+        const bracketGames = await scrapeBracketGames(tournament.pgEventId);
+        for (const g of bracketGames) {
+          if (g.homeTeam && g.awayTeam) {
+            await queries.upsertBracketGame({
+              pgGameId: g.pgGameId, pgEventId: tournament.pgEventId,
+              teamOrgId: 0, teamId: 0,
+              opponentName: `${g.homeTeam.name} vs ${g.awayTeam.name}`,
+              gameDate: g.gameDate, gameTime: g.gameTime, field: g.field,
+              scoreUs: g.homeTeam.score, scoreThem: g.awayTeam.score, result: null,
+              bracketName: g.bracketName, bracketRound: g.round,
+              homeSeed: g.homeTeam.seed, awaySeed: g.awayTeam.seed,
+            });
+          }
+        }
+        if (team?.name) {
+          await queries.claimBracketGamesForTeam(tournament.pgEventId, orgId, teamId, team.name);
+        }
+        console.log(`[scraper] ${bracketGames.length} bracket games for event ${tournament.pgEventId}`);
+        await sleep(1000);
+      } catch (err) {
+        console.log(`[scraper] Bracket error for ${tournament.pgEventId}: ${err.message}`);
+      }
+    }
+
+    // Step 4: Scrape Five Tool Youth
     if (ftTeamUuid) {
       console.log('\n--- Five Tool Youth ---');
       for (const ftSeason of ftSeasons) {
@@ -142,7 +172,7 @@ async function scrapeAll(orgId, teamId, year = DEFAULT_YEAR, ftTeamUuid = null, 
       } catch (e) {}
     }
 
-    // Step 4: Fetch scores for PG games that don't have them yet
+    // Step 5: Fetch scores for PG games that don't have them yet
     console.log('\n--- Fetching missing game scores ---');
     const allGames = await queries.getTeamGames(orgId, teamId);
     const gamesNeedingScores = allGames.filter(g => g.pg_game_id && !g.result && g.source !== 'ft');
