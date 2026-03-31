@@ -17,6 +17,7 @@ import LineupSetup from './pages/LineupSetup'
 import Scorebook from './pages/Scorebook'
 import LiveScoreboard from './pages/LiveScoreboard'
 import TeamMembers from './pages/TeamMembers'
+import Roster from './pages/Roster'
 import LoadingSpinner from './components/LoadingSpinner'
 
 function App() {
@@ -139,6 +140,7 @@ function TeamLayout() {
           <Route path="/tournament/:eventId/schedule" element={<TournamentSchedule />} />
           <Route path="/tournament/:eventId/bracket" element={<TournamentBracket />} />
           <Route path="/search" element={<TeamSearch />} />
+          <Route path="/roster" element={<Roster />} />
           <Route path="/members" element={<TeamMembers orgId={team.pg_org_id} teamId={team.pg_team_id} />} />
         </Routes>
       </main>

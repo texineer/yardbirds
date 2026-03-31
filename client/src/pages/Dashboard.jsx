@@ -4,7 +4,6 @@ import { getTeam, getSchedule, triggerScrape, syncTournament, getTournamentTeams
 import { useAuth } from '../context/AuthContext'
 import GameCard from '../components/GameCard'
 import LoadingSpinner from '../components/LoadingSpinner'
-import WalkupSongManager from '../components/WalkupSongManager'
 
 export default function Dashboard({ orgId, teamId, slug }) {
   const [team, setTeam] = useState(null)
@@ -14,7 +13,6 @@ export default function Dashboard({ orgId, teamId, slug }) {
   const [scraping, setScraping] = useState(false)
   const [syncingTournament, setSyncingTournament] = useState(null)
   const { user, hasTeamRole } = useAuth()
-  const canEdit = user && hasTeamRole(orgId, teamId, ['admin', 'scorekeeper'])
 
   useEffect(() => {
     loadData()
@@ -125,6 +123,15 @@ export default function Dashboard({ orgId, teamId, slug }) {
               <div className="font-display text-4xl leading-none mt-3" style={{ color: 'var(--navy)' }}>
                 {wins}<span className="opacity-20">-</span>{losses}<span className="opacity-20">-</span>{ties}
               </div>
+              {/* Roster button */}
+              <Link to="roster"
+                className="inline-flex items-center gap-1.5 mt-3 text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-lg no-underline"
+                style={{ background: 'var(--navy)', color: 'white' }}>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                  <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/>
+                </svg>
+                Roster ({team?.players?.length || 0})
+              </Link>
             </div>
             <button
               onClick={handleScrape}
@@ -245,34 +252,6 @@ export default function Dashboard({ orgId, teamId, slug }) {
         )
       })}
 
-      {/* Roster */}
-      {team?.players?.length > 0 && (
-        <div>
-          <div className="section-label mb-2">Roster</div>
-          <div className="card divide-y" style={{ borderColor: 'var(--border)' }}>
-            {team.players.map((p, i) => (
-              <div key={i} className="px-4 py-3">
-                <div className="flex items-center gap-3">
-                  <span className="font-display text-lg w-8 shrink-0 text-right" style={{ color: 'var(--navy-muted)' }}>{p.number}</span>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold">{p.name}</div>
-                    <div className="flex gap-2 text-xs mt-0.5" style={{ color: 'var(--navy-muted)' }}>
-                      {p.position && <span>{p.position}</span>}
-                      {(p.bats || p.throws) && <span>{p.bats}/{p.throws}</span>}
-                    </div>
-                    <WalkupSongManager
-                      orgId={orgId}
-                      teamId={teamId}
-                      playerName={p.name}
-                      canEdit={canEdit}
-                    />
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   )
 }
