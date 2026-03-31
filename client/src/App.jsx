@@ -82,13 +82,13 @@ function TeamLayout() {
       {/* Header */}
       <header className="relative overflow-hidden" style={{ background: 'var(--navy)' }}>
         <div className="relative px-4 py-2.5 flex items-center justify-between">
-          {/* Left: BleacherBox logo + team name */}
+          {/* Left: BleacherBox branding */}
           <div className="flex items-center gap-2.5 min-w-0 flex-1">
-            <Link to={`/${slug}`} className="flex items-center gap-2.5 no-underline min-w-0 flex-1">
-              <img src={team.logo_url || '/yardbirds-logo.png'} alt="" className="w-9 h-9 object-contain flex-shrink-0" />
+            <Link to={`/${slug}`} className="flex items-center gap-2 no-underline min-w-0 flex-1">
+              <img src="/bleacherbox_logo.png" alt="BleacherBox" className="h-8 object-contain flex-shrink-0" />
               <div className="min-w-0">
                 <div className="flex items-center gap-1">
-                  <span className="font-display text-xl text-white tracking-wide leading-none truncate">{(team.name || slug).toUpperCase()}</span>
+                  <span className="font-display text-lg text-white tracking-wide leading-none">BLEACHERBOX.APP</span>
                   {roles.length > 1 && (
                     <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowTeamSwitcher(v => !v) }}
                       className="flex-shrink-0">
@@ -99,7 +99,7 @@ function TeamLayout() {
                     </button>
                   )}
                 </div>
-                <span className="text-[9px] font-bold uppercase tracking-widest" style={{ color: 'var(--gold)', opacity: 0.7 }}>bleacherbox.app</span>
+                <span className="text-[10px] font-semibold truncate block" style={{ color: 'var(--gold)', opacity: 0.7 }}>{team.name || slug}</span>
               </div>
             </Link>
           </div>
