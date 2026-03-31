@@ -1011,6 +1011,7 @@ router.post('/teams/:orgId/:teamId/players/:playerName/walkup-song/upload',
         songTitle: req.body.title || null,
         artistName: req.body.artist || null,
         uploadedBy: req.user.id,
+        announce: req.body.announce !== '0' && req.body.announce !== 'false',
       });
       res.json({ status: 'ok', filePath });
     } catch (err) {
@@ -1025,7 +1026,7 @@ router.post('/teams/:orgId/:teamId/players/:playerName/walkup-song/youtube',
   async (req, res) => {
     try {
       const { orgId, teamId, playerName } = req.params;
-      const { youtubeUrl, startSeconds, endSeconds, title, artist } = req.body;
+      const { youtubeUrl, startSeconds, endSeconds, title, artist, announce } = req.body;
       if (!youtubeUrl) return res.status(400).json({ error: 'youtubeUrl required' });
       const videoId = youtubeUrl.match(/(?:watch\?v=|youtu\.be\/)([^&\s]+)/)?.[1];
       if (!videoId) return res.status(400).json({ error: 'Invalid YouTube URL' });
@@ -1042,6 +1043,7 @@ router.post('/teams/:orgId/:teamId/players/:playerName/walkup-song/youtube',
         songTitle: title || null,
         artistName: artist || null,
         uploadedBy: req.user.id,
+        announce: announce !== false && announce !== 0,
       });
       res.json({ status: 'ok', videoId });
     } catch (err) {

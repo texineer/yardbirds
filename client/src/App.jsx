@@ -18,6 +18,7 @@ import Scorebook from './pages/Scorebook'
 import LiveScoreboard from './pages/LiveScoreboard'
 import TeamMembers from './pages/TeamMembers'
 import Roster from './pages/Roster'
+import BleacherBoxDJ from './pages/BleacherBoxDJ'
 import LoadingSpinner from './components/LoadingSpinner'
 
 function App() {
@@ -73,6 +74,7 @@ function TeamLayout() {
 
   const navItems = [
     { path: `/${slug}`, label: 'Home', icon: HomeIcon },
+    { path: `/${slug}/dj`, label: 'DJ', icon: DJIcon },
     ...(isAdmin ? [{ path: `/${slug}/members`, label: 'Members', icon: MembersIcon }] : []),
     { path: `/${slug}/search`, label: 'Teams', icon: SearchIcon },
   ]
@@ -140,6 +142,7 @@ function TeamLayout() {
           <Route path="/tournament/:eventId/bracket" element={<TournamentBracket />} />
           <Route path="/search" element={<TeamSearch />} />
           <Route path="/roster" element={<Roster />} />
+          <Route path="/dj" element={<BleacherBoxDJ orgId={team.pg_org_id} teamId={team.pg_team_id} slug={slug} />} />
           <Route path="/members" element={<TeamMembers orgId={team.pg_org_id} teamId={team.pg_team_id} />} />
         </Routes>
       </main>
@@ -202,6 +205,16 @@ function ScoreIcon({ active }) {
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
       stroke={active ? 'var(--gold-dark)' : 'currentColor'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 20V10" /><path d="M18 20V4" /><path d="M6 20v-4" />
+    </svg>
+  )
+}
+
+function DJIcon({ active }) {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+      stroke={active ? 'var(--gold-dark)' : 'currentColor'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 18V5l12-2v13" />
+      <circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" />
     </svg>
   )
 }

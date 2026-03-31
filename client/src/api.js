@@ -223,6 +223,34 @@ export function endScorebookGame(gameId, body) {
   return mutate('POST', `/games/${gameId}/scorebook/end`, body);
 }
 
+// ── Soundboard ────────────────────────────────────────────────────────────────
+
+export function getSoundboard(orgId, teamId) {
+  return fetchJson(`/teams/${orgId}/${teamId}/soundboard`);
+}
+
+export function saveSoundboardButton(orgId, teamId, buttonKey, data) {
+  return authFetch('PUT', `/teams/${orgId}/${teamId}/soundboard/${buttonKey}`, data);
+}
+
+// ── Playlist ──────────────────────────────────────────────────────────────────
+
+export function getPlaylist(orgId, teamId) {
+  return fetchJson(`/teams/${orgId}/${teamId}/playlist`);
+}
+
+export function addPlaylistSong(orgId, teamId, data) {
+  return authFetch('POST', `/teams/${orgId}/${teamId}/playlist`, data);
+}
+
+export function updatePlaylistSong(orgId, teamId, id, data) {
+  return authFetch('PUT', `/teams/${orgId}/${teamId}/playlist/${id}`, data);
+}
+
+export function removePlaylistSong(orgId, teamId, id) {
+  return authFetch('DELETE', `/teams/${orgId}/${teamId}/playlist/${id}`);
+}
+
 // ── Walkup Songs ──────────────────────────────────────────────────────────────
 
 export function getWalkupSong(orgId, teamId, playerName) {

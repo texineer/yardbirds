@@ -118,6 +118,7 @@ export default function Roster() {
                     orgId={team.pg_org_id}
                     teamId={team.pg_team_id}
                     playerName={p.name}
+                    playerNumber={p.number}
                     canEdit={canEdit}
                   />
                 </div>

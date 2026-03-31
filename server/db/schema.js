@@ -88,6 +88,37 @@ function initSchema() {
   `);
 
   db.run(`
+    CREATE TABLE IF NOT EXISTS team_soundboard (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      pg_org_id INTEGER NOT NULL,
+      pg_team_id INTEGER NOT NULL,
+      button_key TEXT NOT NULL,
+      label TEXT NOT NULL,
+      emoji TEXT,
+      youtube_video_id TEXT,
+      start_seconds REAL NOT NULL DEFAULT 0,
+      end_seconds REAL NOT NULL DEFAULT 20,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      UNIQUE(pg_org_id, pg_team_id, button_key)
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS team_playlist (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      pg_org_id INTEGER NOT NULL,
+      pg_team_id INTEGER NOT NULL,
+      song_title TEXT NOT NULL,
+      artist_name TEXT,
+      youtube_video_id TEXT,
+      start_seconds REAL NOT NULL DEFAULT 0,
+      end_seconds REAL NOT NULL DEFAULT 180,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  db.run(`
     CREATE TABLE IF NOT EXISTS tournaments (
       pg_event_id INTEGER PRIMARY KEY,
       name TEXT,
@@ -301,6 +332,9 @@ function initSchema() {
     )
   `);
   db.run('CREATE INDEX IF NOT EXISTS idx_sessions_expired ON sessions(expired_at)');
+
+  // Migration: add announce flag to walkup songs
+  try { db.run("ALTER TABLE player_walkup_songs ADD COLUMN announce INTEGER NOT NULL DEFAULT 1"); } catch(e) {}
 
   // Migration: add global admin and contact email fields to users
   try { db.run("ALTER TABLE users ADD COLUMN is_global_admin INTEGER NOT NULL DEFAULT 0"); } catch(e) {}

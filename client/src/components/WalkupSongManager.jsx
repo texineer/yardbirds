@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { getWalkupSong, saveYoutubeWalkup, uploadWalkupSong, deleteWalkupSong } from '../api'
 
-export default function WalkupSongManager({ orgId, teamId, playerName, canEdit }) {
+export default function WalkupSongManager({ orgId, teamId, playerName, playerNumber, canEdit }) {
   const [song, setSong] = useState(undefined) // undefined = loading, null = none
   const [mode, setMode] = useState('view') // 'view' | 'youtube' | 'upload'
   const [tab, setTab] = useState('youtube')
@@ -15,6 +15,7 @@ export default function WalkupSongManager({ orgId, teamId, playerName, canEdit }
   const [ytArtist, setYtArtist] = useState('')
   const [ytStart, setYtStart] = useState(0)
   const [ytEnd, setYtEnd] = useState(45)
+  const [ytAnnounce, setYtAnnounce] = useState(true)
 
   // Upload form state
   const [uploadFile, setUploadFile] = useState(null)
@@ -22,6 +23,7 @@ export default function WalkupSongManager({ orgId, teamId, playerName, canEdit }
   const [upArtist, setUpArtist] = useState('')
   const [upStart, setUpStart] = useState(0)
   const [upEnd, setUpEnd] = useState(45)
+  const [upAnnounce, setUpAnnounce] = useState(true)
 
   const audioRef = useRef(null)
   const stopTimerRef = useRef(null)
@@ -35,37 +37,55 @@ export default function WalkupSongManager({ orgId, teamId, playerName, canEdit }
 
   function stopPlayback() {
     clearTimeout(stopTimerRef.current)
+    if (window.speechSynthesis) window.speechSynthesis.cancel()
     if (audioRef.current) {
       audioRef.current.pause()
       audioRef.current.currentTime = 0
     }
-    // Stop YouTube by removing src
-    if (iframeRef.current) {
-      iframeRef.current.src = ''
-    }
+    if (iframeRef.current) iframeRef.current.src = ''
     setPlaying(false)
   }
 
-  function handlePlay() {
-    if (playing) { stopPlayback(); return }
-    if (!song) return
+  function announcePlayer(onDone) {
+    if (!window.speechSynthesis) { onDone(); return }
+    const numStr = playerNumber ? ` number ${playerNumber},` : ''
+    const utterance = new SpeechSynthesisUtterance(
+      `Now batting,${numStr} ${playerName}!`
+    )
+    utterance.rate = 0.82
+    utterance.pitch = 0.75
+    utterance.volume = 1
+    utterance.onend = onDone
+    utterance.onerror = onDone
+    window.speechSynthesis.speak(utterance)
+  }
 
+  function startClip() {
+    if (!song) return
     if (song.song_type === 'upload') {
       const audio = audioRef.current
       if (!audio) return
       audio.currentTime = song.start_seconds
       audio.play()
-      setPlaying(true)
       const duration = (song.end_seconds - song.start_seconds) * 1000
       stopTimerRef.current = setTimeout(stopPlayback, duration)
       audio.onended = stopPlayback
     } else {
-      // YouTube — load iframe with autoplay + start/end
       const src = `https://www.youtube.com/embed/${song.youtube_video_id}?start=${Math.floor(song.start_seconds)}&end=${Math.floor(song.end_seconds)}&autoplay=1&enablejsapi=1`
       if (iframeRef.current) iframeRef.current.src = src
-      setPlaying(true)
       const duration = (song.end_seconds - song.start_seconds) * 1000
       stopTimerRef.current = setTimeout(stopPlayback, duration)
+    }
+  }
+
+  function handlePlay() {
+    if (playing) { stopPlayback(); return }
+    if (!song) return
+    setPlaying(true)
+    if (song.announce) {
+      announcePlayer(startClip)
+    } else {
+      startClip()
     }
   }
 
@@ -81,6 +101,7 @@ export default function WalkupSongManager({ orgId, teamId, playerName, canEdit }
         endSeconds: ytEnd,
         title: ytTitle.trim() || null,
         artist: ytArtist.trim() || null,
+        announce: ytAnnounce,
       })
       const updated = await getWalkupSong(orgId, teamId, playerName)
       setSong(updated)
@@ -102,6 +123,7 @@ export default function WalkupSongManager({ orgId, teamId, playerName, canEdit }
       fd.append('file', uploadFile)
       fd.append('startSeconds', upStart)
       fd.append('endSeconds', upEnd)
+      fd.append('announce', upAnnounce ? '1' : '0')
       if (upTitle) fd.append('title', upTitle)
       if (upArtist) fd.append('artist', upArtist)
       await uploadWalkupSong(orgId, teamId, playerName, fd)
@@ -138,12 +160,14 @@ export default function WalkupSongManager({ orgId, teamId, playerName, canEdit }
         setYtArtist(song.artist_name || '')
         setYtStart(song.start_seconds || 0)
         setYtEnd(song.end_seconds || 45)
+        setYtAnnounce(song.announce !== 0)
       } else {
         setTab('upload')
         setUpTitle(song.song_title || '')
         setUpArtist(song.artist_name || '')
         setUpStart(song.start_seconds || 0)
         setUpEnd(song.end_seconds || 45)
+        setUpAnnounce(song.announce !== 0)
       }
     }
     setMode('edit')
@@ -200,6 +224,11 @@ export default function WalkupSongManager({ orgId, teamId, playerName, canEdit }
                 <span className="text-xs" style={{ color: 'var(--navy-muted)' }}>sec &nbsp;({ytEnd - ytStart}s clip)</span>
               </div>
             </div>
+            <label className="flex items-center gap-2 text-xs cursor-pointer select-none" style={{ color: 'var(--navy)' }}>
+              <input type="checkbox" checked={ytAnnounce} onChange={e => setYtAnnounce(e.target.checked)}
+                className="w-3.5 h-3.5 accent-[var(--gold-dark)]" />
+              <span>Announce player name &amp; number</span>
+            </label>
             {error && <p className="text-xs text-red-600">{error}</p>}
             <div className="flex gap-2 pt-1">
               <button type="submit" disabled={saving}
@@ -246,6 +275,11 @@ export default function WalkupSongManager({ orgId, teamId, playerName, canEdit }
                 <span className="text-xs" style={{ color: 'var(--navy-muted)' }}>sec &nbsp;({upEnd - upStart}s clip)</span>
               </div>
             </div>
+            <label className="flex items-center gap-2 text-xs cursor-pointer select-none" style={{ color: 'var(--navy)' }}>
+              <input type="checkbox" checked={upAnnounce} onChange={e => setUpAnnounce(e.target.checked)}
+                className="w-3.5 h-3.5 accent-[var(--gold-dark)]" />
+              <span>Announce player name &amp; number</span>
+            </label>
             {error && <p className="text-xs text-red-600">{error}</p>}
             <div className="flex gap-2 pt-1">
               <button type="submit" disabled={saving}
