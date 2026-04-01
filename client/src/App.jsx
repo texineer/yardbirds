@@ -20,6 +20,7 @@ import LiveScoreboard from './pages/LiveScoreboard'
 import TeamMembers from './pages/TeamMembers'
 import Roster from './pages/Roster'
 import BleacherBoxDJ from './pages/BleacherBoxDJ'
+import Lunch from './pages/Lunch'
 import BaseballCard from './pages/BaseballCard'
 import Stream from './pages/Stream'
 import LoadingSpinner from './components/LoadingSpinner'
@@ -79,6 +80,7 @@ function TeamLayout() {
   const navItems = [
     { path: `/${slug}`, label: 'Home', icon: HomeIcon },
     { path: `/${slug}/dj`, label: 'DJ', icon: DJIcon },
+    { path: `/${slug}/lunch`, label: 'Lunch', icon: LunchIcon },
     { path: `/${slug}/stream`, label: 'Stream', icon: StreamIcon },
     { path: `/${slug}/baseball-card`, label: 'Card', icon: CardIcon },
     ...(isAdmin ? [{ path: `/${slug}/members`, label: 'Members', icon: MembersIcon }] : []),
@@ -154,6 +156,7 @@ function TeamLayout() {
           <Route path="/search" element={<TeamSearch />} />
           <Route path="/roster" element={<Roster />} />
           <Route path="/dj" element={<BleacherBoxDJ orgId={team.pg_org_id} teamId={team.pg_team_id} slug={slug} />} />
+          <Route path="/lunch" element={<Lunch />} />
           <Route path="/members" element={<TeamMembers orgId={team.pg_org_id} teamId={team.pg_team_id} />} />
           <Route path="/baseball-card" element={<BaseballCard orgId={team.pg_org_id} teamId={team.pg_team_id} />} />
           <Route path="/stream" element={<Stream orgId={team.pg_org_id} teamId={team.pg_team_id} />} />
@@ -249,6 +252,18 @@ function StreamIcon({ active }) {
       <circle cx="12" cy="12" r="2" />
       <path d="M4.93 4.93a10 10 0 000 14.14M19.07 4.93a10 10 0 010 14.14" />
       <path d="M7.76 7.76a6 6 0 000 8.49M16.24 7.76a6 6 0 010 8.49" />
+    </svg>
+  )
+}
+
+function LunchIcon({ active }) {
+  const c = active ? 'var(--gold-dark)' : 'currentColor'
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+      stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18 8h1a4 4 0 010 8h-1" />
+      <path d="M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8z" />
+      <path d="M6 1v3M10 1v3M14 1v3" />
     </svg>
   )
 }
