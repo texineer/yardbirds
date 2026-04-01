@@ -139,6 +139,18 @@ export default function WalkupSongManager({ orgId, teamId, playerName, playerNum
 
   function startClip() {
     if (!song) return
+
+    // If extracted audio exists (from yt-dlp), use it — works on all platforms including iOS
+    if (song.extracted_audio_path) {
+      const audio = new Audio(`/walkups/${song.extracted_audio_path}`)
+      audioRef.current = audio
+      audio.play().catch(() => {})
+      const duration = (song.end_seconds - song.start_seconds) * 1000
+      stopTimerRef.current = setTimeout(stopPlayback, duration)
+      audio.onended = stopPlayback
+      return
+    }
+
     if (song.song_type === 'upload') {
       const audio = audioRef.current
       if (!audio) return
@@ -148,10 +160,8 @@ export default function WalkupSongManager({ orgId, teamId, playerName, playerNum
       stopTimerRef.current = setTimeout(stopPlayback, duration)
       audio.onended = stopPlayback
     } else {
-      // Use YT API on iOS, iframe on desktop
-      if (isIOS && window.YT?.Player) {
-        createYTPlayer(song.youtube_video_id, song.start_seconds)
-      } else if (iframeRef.current) {
+      // Fallback: YouTube iframe (desktop only, doesn't work on iOS)
+      if (iframeRef.current) {
         iframeRef.current.src = ytSrc(1)
       }
       const duration = (song.end_seconds - song.start_seconds) * 1000
@@ -159,41 +169,13 @@ export default function WalkupSongManager({ orgId, teamId, playerName, playerNum
     }
   }
 
-  async function handlePlay() {
+  function handlePlay() {
     if (playing) { stopPlayback(); return }
     if (!song) return
     setPlaying(true)
 
-    // On iOS, preload the YT API during the user gesture
-    if (isIOS && song.song_type === 'youtube') {
-      await ensureYTApi()
-    }
-
     if (song.announce) {
-      if (isIOS && song.song_type === 'youtube') {
-        // iOS: start YouTube muted NOW (during user gesture) via YT API
-        await ensureYTApi()
-        createYTPlayer(song.youtube_video_id, song.start_seconds, (player) => {
-          player.mute()
-        })
-        // Play announcer, then unmute YouTube when done
-        announcePlayer(() => {
-          if (ytPlayerRef.current) {
-            ytPlayerRef.current.unMute()
-            ytPlayerRef.current.setVolume(100)
-            ytPlayerRef.current.seekTo(Math.floor(song.start_seconds), true)
-            ytPlayerRef.current.playVideo()
-          }
-          const duration = (song.end_seconds - song.start_seconds) * 1000
-          stopTimerRef.current = setTimeout(stopPlayback, duration)
-        })
-      } else {
-        // Desktop: use iframe approach
-        if (song.song_type === 'youtube' && iframeRef.current) {
-          iframeRef.current.src = ytSrc(0)
-        }
-        announcePlayer(startClip)
-      }
+      announcePlayer(startClip)
     } else {
       startClip()
     }

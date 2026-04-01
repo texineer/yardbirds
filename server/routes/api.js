@@ -1036,6 +1036,30 @@ router.post('/teams/:orgId/:teamId/players/:playerName/walkup-song/youtube',
       const announceAudioPath = shouldAnnounce
         ? await generateAnnouncement(parseInt(orgId), parseInt(teamId), decodedName, playerNumber || null)
         : null;
+      const start = parseFloat(startSeconds) || 0;
+      const end = parseFloat(endSeconds) || 45;
+
+      // Extract audio from YouTube for iOS compatibility
+      let extractedAudioPath = null;
+      try {
+        const { execSync } = require('child_process');
+        const safeName = decodedName.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 30);
+        const filename = `yt-${videoId}-${safeName}.mp3`;
+        const outPath = path.join(__dirname, '..', '..', 'data', 'walkups', filename);
+        const tempPath = outPath.replace('.mp3', '_full.%(ext)s');
+        // Download full audio then trim with ffmpeg
+        execSync(`yt-dlp -x --audio-format mp3 -o "${tempPath}" "https://www.youtube.com/watch?v=${videoId}" 2>&1`, { timeout: 60000 });
+        const fullMp3 = tempPath.replace('%(ext)s', 'mp3');
+        const duration = end - start;
+        execSync(`ffmpeg -y -i "${fullMp3}" -ss ${start} -t ${duration} -acodec libmp3lame -q:a 2 "${outPath}" 2>&1`, { timeout: 30000 });
+        // Clean up full file
+        try { require('fs').unlinkSync(fullMp3); } catch(e) {}
+        extractedAudioPath = filename;
+        console.log(`[walkup] Extracted audio: ${filename}`);
+      } catch (extractErr) {
+        console.error(`[walkup] Audio extraction failed: ${extractErr.message}`);
+      }
+
       await queries.upsertWalkupSong({
         pgOrgId: parseInt(orgId),
         pgTeamId: parseInt(teamId),
@@ -1044,15 +1068,16 @@ router.post('/teams/:orgId/:teamId/players/:playerName/walkup-song/youtube',
         filePath: null,
         youtubeUrl,
         youtubeVideoId: videoId,
-        startSeconds: parseFloat(startSeconds) || 0,
-        endSeconds: parseFloat(endSeconds) || 45,
+        startSeconds: start,
+        endSeconds: end,
         songTitle: title || null,
         artistName: artist || null,
         uploadedBy: req.user.id,
         announce: shouldAnnounce,
         announceAudioPath,
+        extractedAudioPath,
       });
-      res.json({ status: 'ok', videoId });
+      res.json({ status: 'ok', videoId, extractedAudioPath });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }

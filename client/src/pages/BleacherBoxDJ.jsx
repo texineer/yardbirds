@@ -47,11 +47,10 @@ export default function BleacherBoxDJ() {
   function stopAll() {
     clearTimeout(stopTimerRef.current)
     if (iframeRef.current) iframeRef.current.src = ''
-    if (ytPlayerRef.current) {
-      try { ytPlayerRef.current.stopVideo(); ytPlayerRef.current.destroy() } catch (e) {}
-      ytPlayerRef.current = null
+    if (djAudioRef?.current) {
+      djAudioRef.current.pause()
+      djAudioRef.current = null
     }
-    if (ytContainerRef.current) ytContainerRef.current.innerHTML = ''
     setPlayingKey(null)
     setPlayingPlaylistId(null)
   }
@@ -71,40 +70,42 @@ export default function BleacherBoxDJ() {
     })
   }
 
-  async function playClip(videoId, startSeconds, endSeconds, key, playlistId) {
+  const djAudioRef = useRef(null)
+
+  async function playClip(videoId, startSeconds, endSeconds, key, playlistId, extractedAudioPath) {
     stopAll()
-    if (!videoId) return
     if (key) setPlayingKey(key)
     if (playlistId) setPlayingPlaylistId(playlistId)
     const duration = (endSeconds - startSeconds) * 1000
 
-    if (isIOS) {
-      // iOS: use YT IFrame Player API for reliable playback
-      await ensureYTApi()
-      if (!ytContainerRef.current) return
-      ytContainerRef.current.innerHTML = '<div id="yt-dj-player"></div>'
-      ytPlayerRef.current = new window.YT.Player('yt-dj-player', {
-        height: '1', width: '1', videoId,
-        playerVars: { autoplay: 1, start: Math.floor(startSeconds), playsinline: 1, controls: 0 },
-        events: { onReady: (e) => { e.target.setVolume(100); e.target.playVideo() } },
-      })
-    } else {
-      const src = `https://www.youtube.com/embed/${videoId}?start=${Math.floor(startSeconds)}&end=${Math.floor(endSeconds)}&autoplay=1&enablejsapi=1&playsinline=1`
-      iframeRef.current.src = src
+    // Use extracted audio if available (works on all platforms including iOS)
+    if (extractedAudioPath) {
+      const audio = new Audio(`/walkups/${extractedAudioPath}`)
+      djAudioRef.current = audio
+      audio.play().catch(() => {})
+      stopTimerRef.current = setTimeout(stopAll, duration)
+      audio.onended = stopAll
+      return
     }
+
+    if (!videoId) return
+
+    // Fallback: YouTube iframe (desktop)
+    const src = `https://www.youtube.com/embed/${videoId}?start=${Math.floor(startSeconds)}&end=${Math.floor(endSeconds)}&autoplay=1&enablejsapi=1&playsinline=1`
+    iframeRef.current.src = src
     stopTimerRef.current = setTimeout(stopAll, duration)
   }
 
   function handleSoundboardTap(btn) {
     if (playingKey === btn.button_key) { stopAll(); return }
     if (!btn.youtube_video_id) return
-    playClip(btn.youtube_video_id, btn.start_seconds ?? btn.suggestedStart ?? 0, btn.end_seconds ?? btn.suggestedEnd ?? 20, btn.button_key, null)
+    playClip(btn.youtube_video_id, btn.start_seconds ?? btn.suggestedStart ?? 0, btn.end_seconds ?? btn.suggestedEnd ?? 20, btn.button_key, null, btn.extracted_audio_path)
   }
 
   function handlePlaylistTap(song) {
     if (playingPlaylistId === song.id) { stopAll(); return }
     if (!song.youtube_video_id) return
-    playClip(song.youtube_video_id, song.start_seconds, song.end_seconds, null, song.id)
+    playClip(song.youtube_video_id, song.start_seconds, song.end_seconds, null, song.id, song.extracted_audio_path)
   }
 
   if (loading) return <LoadingSpinner />

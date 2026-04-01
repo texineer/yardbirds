@@ -284,6 +284,9 @@ function initSchema() {
   try { db.run("ALTER TABLE plate_appearances ADD COLUMN fielder TEXT"); } catch(e) {}
   try { db.run("ALTER TABLE plate_appearances ADD COLUMN runs_scored INTEGER DEFAULT 0"); } catch(e) {}
 
+  // Migration: extracted audio for YouTube walkup songs (iOS compatibility)
+  try { db.run("ALTER TABLE player_walkup_songs ADD COLUMN extracted_audio_path TEXT"); } catch(e) {}
+
   // Migration: add bracket fields to games
   try { db.run("ALTER TABLE games ADD COLUMN game_type TEXT DEFAULT 'pool'"); } catch(e) {}
   try { db.run("ALTER TABLE games ADD COLUMN bracket_name TEXT"); } catch(e) {}
