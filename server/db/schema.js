@@ -343,6 +343,18 @@ function initSchema() {
 
   // Migration: add baseball card image path to players
   try { db.run("ALTER TABLE players ADD COLUMN card_image_path TEXT"); } catch(e) {}
+
+  // Stream config table
+  db.run(`
+    CREATE TABLE IF NOT EXISTS team_stream_config (
+      pg_org_id INTEGER NOT NULL,
+      pg_team_id INTEGER NOT NULL,
+      youtube_url TEXT,
+      is_live INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT DEFAULT (datetime('now')),
+      PRIMARY KEY (pg_org_id, pg_team_id)
+    )
+  `);
 }
 
 function saveDb() {

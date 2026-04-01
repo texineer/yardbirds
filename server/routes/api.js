@@ -1144,4 +1144,32 @@ router.delete('/teams/:orgId/:teamId/players/:playerName/baseball-card',
   }
 );
 
+// ── Stream Config ─────────────────────────────────────────────────────────────
+
+// GET /api/teams/:orgId/:teamId/stream
+router.get('/teams/:orgId/:teamId/stream', async (req, res) => {
+  try {
+    const config = await queries.getStreamConfig(parseInt(req.params.orgId), parseInt(req.params.teamId));
+    res.json({ youtube_url: config.youtube_url || '', is_live: !!config.is_live });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/teams/:orgId/:teamId/stream
+router.post('/teams/:orgId/:teamId/stream', requireAuth, requireTeamRole(['admin']), async (req, res) => {
+  try {
+    const { youtube_url, is_live } = req.body;
+    await queries.setStreamConfig(
+      parseInt(req.params.orgId),
+      parseInt(req.params.teamId),
+      youtube_url,
+      is_live
+    );
+    res.json({ youtube_url: youtube_url || '', is_live: !!is_live });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

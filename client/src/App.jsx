@@ -21,6 +21,7 @@ import TeamMembers from './pages/TeamMembers'
 import Roster from './pages/Roster'
 import BleacherBoxDJ from './pages/BleacherBoxDJ'
 import BaseballCard from './pages/BaseballCard'
+import Stream from './pages/Stream'
 import LoadingSpinner from './components/LoadingSpinner'
 
 function App() {
@@ -78,6 +79,7 @@ function TeamLayout() {
   const navItems = [
     { path: `/${slug}`, label: 'Home', icon: HomeIcon },
     { path: `/${slug}/dj`, label: 'DJ', icon: DJIcon },
+    { path: `/${slug}/stream`, label: 'Stream', icon: StreamIcon },
     { path: `/${slug}/baseball-card`, label: 'Card', icon: CardIcon },
     ...(isAdmin ? [{ path: `/${slug}/members`, label: 'Members', icon: MembersIcon }] : []),
     { path: `/${slug}/search`, label: 'Teams', icon: SearchIcon },
@@ -154,6 +156,7 @@ function TeamLayout() {
           <Route path="/dj" element={<BleacherBoxDJ orgId={team.pg_org_id} teamId={team.pg_team_id} slug={slug} />} />
           <Route path="/members" element={<TeamMembers orgId={team.pg_org_id} teamId={team.pg_team_id} />} />
           <Route path="/baseball-card" element={<BaseballCard orgId={team.pg_org_id} teamId={team.pg_team_id} />} />
+          <Route path="/stream" element={<Stream orgId={team.pg_org_id} teamId={team.pg_team_id} />} />
         </Routes>
       </main>
 
@@ -234,6 +237,18 @@ function MembersIcon({ active }) {
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
       stroke={active ? 'var(--gold-dark)' : 'currentColor'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
+    </svg>
+  )
+}
+
+function StreamIcon({ active }) {
+  const c = active ? 'var(--gold-dark)' : 'currentColor'
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+      stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="2" />
+      <path d="M4.93 4.93a10 10 0 000 14.14M19.07 4.93a10 10 0 010 14.14" />
+      <path d="M7.76 7.76a6 6 0 000 8.49M16.24 7.76a6 6 0 010 8.49" />
     </svg>
   )
 }

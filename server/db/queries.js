@@ -746,6 +746,25 @@ async function getTeamFromGameId(gameId) {
   return get(db, 'SELECT team_org_id, team_id FROM games WHERE id = ?', [gameId]);
 }
 
+// Stream config
+async function getStreamConfig(orgId, teamId) {
+  const db = await getDb();
+  return get(db, `SELECT youtube_url, is_live FROM team_stream_config WHERE pg_org_id = ? AND pg_team_id = ?`, [orgId, teamId])
+    || { youtube_url: null, is_live: 0 };
+}
+
+async function setStreamConfig(orgId, teamId, youtubeUrl, isLive) {
+  const db = await getDb();
+  run(db, `
+    INSERT INTO team_stream_config (pg_org_id, pg_team_id, youtube_url, is_live, updated_at)
+    VALUES (?, ?, ?, ?, datetime('now'))
+    ON CONFLICT(pg_org_id, pg_team_id) DO UPDATE SET
+      youtube_url = excluded.youtube_url,
+      is_live = excluded.is_live,
+      updated_at = excluded.updated_at
+  `, [orgId, teamId, youtubeUrl || null, isLive ? 1 : 0]);
+}
+
 module.exports = {
   upsertTeam, getTeam, getTeamBySlug, getAllTeams, registerTeam, searchTeams,
   upsertPlayer, getPlayers, setPlayerCardPath,
@@ -770,4 +789,6 @@ module.exports = {
   getTeamSoundboard, upsertSoundboardButton,
   // Playlist
   getTeamPlaylist, insertPlaylistSong, updatePlaylistSong, deletePlaylistSong,
+  // Stream config
+  getStreamConfig, setStreamConfig,
 };
