@@ -174,7 +174,31 @@ export default function WalkupSongManager({ orgId, teamId, playerName, playerNum
     if (!song) return
     setPlaying(true)
 
-    if (song.announce) {
+    if (song.announce && song.extracted_audio_path) {
+      // iOS fix: create and start the audio NOW (during user gesture) but paused/muted
+      // This "unlocks" the audio element so we can play it after the announcer finishes
+      const audio = new Audio(`/walkups/${song.extracted_audio_path}`)
+      audioRef.current = audio
+      // Play briefly to unlock, then pause immediately
+      audio.volume = 0
+      audio.play().then(() => {
+        audio.pause()
+        audio.currentTime = 0
+        // Now play the announcer
+        announcePlayer(() => {
+          // After announcer ends, resume audio at full volume — iOS allows this
+          audio.volume = 1
+          audio.currentTime = 0
+          audio.play().catch(() => {})
+          const duration = (song.end_seconds - song.start_seconds) * 1000
+          stopTimerRef.current = setTimeout(stopPlayback, duration)
+          audio.onended = stopPlayback
+        })
+      }).catch(() => {
+        // If unlock fails, just play announcer then try audio
+        announcePlayer(startClip)
+      })
+    } else if (song.announce) {
       announcePlayer(startClip)
     } else {
       startClip()
