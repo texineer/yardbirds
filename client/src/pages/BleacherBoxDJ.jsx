@@ -20,6 +20,9 @@ export default function BleacherBoxDJ() {
   const [showPlaylist, setShowPlaylist] = useState(false)
   const iframeRef = useRef(null)
   const stopTimerRef = useRef(null)
+  const ytPlayerRef = useRef(null)
+  const ytContainerRef = useRef(null)
+  const isIOS = typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent)
 
   useEffect(() => {
     getTeamBySlug(slug)
@@ -44,18 +47,51 @@ export default function BleacherBoxDJ() {
   function stopAll() {
     clearTimeout(stopTimerRef.current)
     if (iframeRef.current) iframeRef.current.src = ''
+    if (ytPlayerRef.current) {
+      try { ytPlayerRef.current.stopVideo(); ytPlayerRef.current.destroy() } catch (e) {}
+      ytPlayerRef.current = null
+    }
+    if (ytContainerRef.current) ytContainerRef.current.innerHTML = ''
     setPlayingKey(null)
     setPlayingPlaylistId(null)
   }
 
-  function playClip(videoId, startSeconds, endSeconds, key, playlistId) {
+  function ensureYTApi() {
+    return new Promise(resolve => {
+      if (window.YT?.Player) { resolve(); return }
+      if (!document.querySelector('script[src*="youtube.com/iframe_api"]')) {
+        const tag = document.createElement('script')
+        tag.src = 'https://www.youtube.com/iframe_api'
+        document.head.appendChild(tag)
+      }
+      const check = setInterval(() => {
+        if (window.YT?.Player) { clearInterval(check); resolve() }
+      }, 100)
+      setTimeout(() => { clearInterval(check); resolve() }, 5000)
+    })
+  }
+
+  async function playClip(videoId, startSeconds, endSeconds, key, playlistId) {
     stopAll()
     if (!videoId) return
-    const src = `https://www.youtube.com/embed/${videoId}?start=${Math.floor(startSeconds)}&end=${Math.floor(endSeconds)}&autoplay=1&enablejsapi=1`
-    iframeRef.current.src = src
     if (key) setPlayingKey(key)
     if (playlistId) setPlayingPlaylistId(playlistId)
     const duration = (endSeconds - startSeconds) * 1000
+
+    if (isIOS) {
+      // iOS: use YT IFrame Player API for reliable playback
+      await ensureYTApi()
+      if (!ytContainerRef.current) return
+      ytContainerRef.current.innerHTML = '<div id="yt-dj-player"></div>'
+      ytPlayerRef.current = new window.YT.Player('yt-dj-player', {
+        height: '1', width: '1', videoId,
+        playerVars: { autoplay: 1, start: Math.floor(startSeconds), playsinline: 1, controls: 0 },
+        events: { onReady: (e) => { e.target.setVolume(100); e.target.playVideo() } },
+      })
+    } else {
+      const src = `https://www.youtube.com/embed/${videoId}?start=${Math.floor(startSeconds)}&end=${Math.floor(endSeconds)}&autoplay=1&enablejsapi=1&playsinline=1`
+      iframeRef.current.src = src
+    }
     stopTimerRef.current = setTimeout(stopAll, duration)
   }
 
@@ -82,8 +118,9 @@ export default function BleacherBoxDJ() {
 
   return (
     <div className="space-y-6 pb-8">
-      {/* Hidden YouTube iframe — shared by all players */}
+      {/* Hidden YouTube iframe (desktop) + YT API container (iOS) */}
       <iframe ref={iframeRef} src="" allow="autoplay" className="hidden" title="dj-player" />
+      <div ref={ytContainerRef} className="hidden" />
 
       {/* Header */}
       <div className="card overflow-hidden">

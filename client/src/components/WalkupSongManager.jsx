@@ -29,6 +29,9 @@ export default function WalkupSongManager({ orgId, teamId, playerName, playerNum
   const announceAudioRef = useRef(null)
   const stopTimerRef = useRef(null)
   const iframeRef = useRef(null)
+  const ytPlayerRef = useRef(null)
+  const ytContainerRef = useRef(null)
+  const isIOS = typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent)
 
   useEffect(() => {
     getWalkupSong(orgId, teamId, playerName)
@@ -44,6 +47,12 @@ export default function WalkupSongManager({ orgId, teamId, playerName, playerNum
       announceAudioRef.current.onended = null
       announceAudioRef.current = null
     }
+    // Stop YT API player
+    if (ytPlayerRef.current) {
+      try { ytPlayerRef.current.stopVideo(); ytPlayerRef.current.destroy() } catch (e) {}
+      ytPlayerRef.current = null
+    }
+    if (ytContainerRef.current) ytContainerRef.current.innerHTML = ''
     if (audioRef.current) {
       audioRef.current.pause()
       audioRef.current.currentTime = 0
@@ -74,7 +83,58 @@ export default function WalkupSongManager({ orgId, teamId, playerName, playerNum
   }
 
   function ytSrc(autoplay) {
-    return `https://www.youtube.com/embed/${song.youtube_video_id}?start=${Math.floor(song.start_seconds)}&end=${Math.floor(song.end_seconds)}&autoplay=${autoplay}&enablejsapi=1`
+    return `https://www.youtube.com/embed/${song.youtube_video_id}?start=${Math.floor(song.start_seconds)}&end=${Math.floor(song.end_seconds)}&autoplay=${autoplay}&enablejsapi=1&playsinline=1`
+  }
+
+  // Load YouTube IFrame API if not already loaded
+  function ensureYTApi() {
+    return new Promise(resolve => {
+      if (window.YT?.Player) { resolve(); return }
+      if (!document.querySelector('script[src*="youtube.com/iframe_api"]')) {
+        const tag = document.createElement('script')
+        tag.src = 'https://www.youtube.com/iframe_api'
+        document.head.appendChild(tag)
+      }
+      const check = setInterval(() => {
+        if (window.YT?.Player) { clearInterval(check); resolve() }
+      }, 100)
+      setTimeout(() => { clearInterval(check); resolve() }, 5000)
+    })
+  }
+
+  function createYTPlayer(videoId, startSeconds, onReady) {
+    // Destroy old player
+    if (ytPlayerRef.current) {
+      try { ytPlayerRef.current.destroy() } catch (e) {}
+      ytPlayerRef.current = null
+    }
+    const container = ytContainerRef.current
+    if (!container) return
+    // Clear container and create a fresh div
+    container.innerHTML = '<div id="yt-walkup-player"></div>'
+    const playerDiv = container.querySelector('#yt-walkup-player')
+
+    ytPlayerRef.current = new window.YT.Player(playerDiv, {
+      height: '1',
+      width: '1',
+      videoId,
+      playerVars: {
+        autoplay: 1,
+        start: Math.floor(startSeconds),
+        playsinline: 1,
+        controls: 0,
+        disablekb: 1,
+        fs: 0,
+        modestbranding: 1,
+      },
+      events: {
+        onReady: (e) => {
+          e.target.setVolume(100)
+          e.target.playVideo()
+          if (onReady) onReady(e.target)
+        },
+      },
+    })
   }
 
   function startClip() {
@@ -88,37 +148,52 @@ export default function WalkupSongManager({ orgId, teamId, playerName, playerNum
       stopTimerRef.current = setTimeout(stopPlayback, duration)
       audio.onended = stopPlayback
     } else {
-      if (iframeRef.current) {
-        if (iframeRef.current.src?.includes(song.youtube_video_id)) {
-          // iframe already loaded (preloaded muted during handlePlay for iOS)
-          // Unmute, seek to start, and ensure playing
-          const win = iframeRef.current.contentWindow
-          const cmd = (func, args = []) => win?.postMessage(JSON.stringify({ event: 'command', func, args }), '*')
-          cmd('seekTo', [Math.floor(song.start_seconds), true])
-          cmd('unMute')
-          cmd('setVolume', [100])
-          cmd('playVideo')
-        } else {
-          iframeRef.current.src = ytSrc(1)
-        }
+      // Use YT API on iOS, iframe on desktop
+      if (isIOS && window.YT?.Player) {
+        createYTPlayer(song.youtube_video_id, song.start_seconds)
+      } else if (iframeRef.current) {
+        iframeRef.current.src = ytSrc(1)
       }
       const duration = (song.end_seconds - song.start_seconds) * 1000
       stopTimerRef.current = setTimeout(stopPlayback, duration)
     }
   }
 
-  function handlePlay() {
+  async function handlePlay() {
     if (playing) { stopPlayback(); return }
     if (!song) return
     setPlaying(true)
+
+    // On iOS, preload the YT API during the user gesture
+    if (isIOS && song.song_type === 'youtube') {
+      await ensureYTApi()
+    }
+
     if (song.announce) {
-      if (song.song_type === 'youtube' && iframeRef.current) {
-        // iOS fix: load iframe with autoplay=1 AND mute=1 to "unlock" it
-        // during the user gesture. This lets us unmute + seek later after
-        // the announcer finishes without iOS blocking playback.
-        iframeRef.current.src = `https://www.youtube.com/embed/${song.youtube_video_id}?start=${Math.floor(song.start_seconds)}&end=${Math.floor(song.end_seconds)}&autoplay=1&mute=1&enablejsapi=1`
+      if (isIOS && song.song_type === 'youtube') {
+        // iOS: start YouTube muted NOW (during user gesture) via YT API
+        await ensureYTApi()
+        createYTPlayer(song.youtube_video_id, song.start_seconds, (player) => {
+          player.mute()
+        })
+        // Play announcer, then unmute YouTube when done
+        announcePlayer(() => {
+          if (ytPlayerRef.current) {
+            ytPlayerRef.current.unMute()
+            ytPlayerRef.current.setVolume(100)
+            ytPlayerRef.current.seekTo(Math.floor(song.start_seconds), true)
+            ytPlayerRef.current.playVideo()
+          }
+          const duration = (song.end_seconds - song.start_seconds) * 1000
+          stopTimerRef.current = setTimeout(stopPlayback, duration)
+        })
+      } else {
+        // Desktop: use iframe approach
+        if (song.song_type === 'youtube' && iframeRef.current) {
+          iframeRef.current.src = ytSrc(0)
+        }
+        announcePlayer(startClip)
       }
-      announcePlayer(startClip)
     } else {
       startClip()
     }
@@ -388,15 +463,12 @@ export default function WalkupSongManager({ orgId, teamId, playerName, playerNum
             <audio ref={audioRef} src={`/walkups/${song.file_path}`} preload="none" />
           )}
 
-          {/* Hidden YouTube iframe */}
+          {/* Hidden YouTube iframe (desktop) + YT API container (iOS) */}
           {song.song_type === 'youtube' && (
-            <iframe
-              ref={iframeRef}
-              src=""
-              allow="autoplay"
-              className="hidden"
-              title="walkup"
-            />
+            <>
+              <iframe ref={iframeRef} src="" allow="autoplay" className="hidden" title="walkup" />
+              <div ref={ytContainerRef} className="hidden" />
+            </>
           )}
         </div>
       ) : (
