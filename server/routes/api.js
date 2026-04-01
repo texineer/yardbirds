@@ -4,7 +4,30 @@ const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
 const axios = require('axios');
+const { execSync } = require('child_process');
 const queries = require('../db/queries');
+
+// Extract audio from YouTube video and save as trimmed MP3
+function extractYoutubeAudio(videoId, startSeconds, endSeconds, label) {
+  try {
+    const safeName = (label || videoId).replace(/[^a-zA-Z0-9]/g, '_').slice(0, 30);
+    const filename = `yt-${videoId}-${safeName}.mp3`;
+    const walkupsDir = path.join(__dirname, '..', '..', 'data', 'walkups');
+    if (!fs.existsSync(walkupsDir)) fs.mkdirSync(walkupsDir, { recursive: true });
+    const outPath = path.join(walkupsDir, filename);
+    const tempPath = outPath.replace('.mp3', '_full.%(ext)s');
+    execSync(`yt-dlp -x --audio-format mp3 -o "${tempPath}" "https://www.youtube.com/watch?v=${videoId}" 2>&1`, { timeout: 60000 });
+    const fullMp3 = tempPath.replace('%(ext)s', 'mp3');
+    const duration = endSeconds - startSeconds;
+    execSync(`ffmpeg -y -i "${fullMp3}" -ss ${startSeconds} -t ${duration} -acodec libmp3lame -q:a 2 "${outPath}" 2>&1`, { timeout: 30000 });
+    try { fs.unlinkSync(fullMp3); } catch(e) {}
+    console.log(`[extract] Audio: ${filename}`);
+    return filename;
+  } catch (err) {
+    console.error(`[extract] Failed for ${videoId}: ${err.message}`);
+    return null;
+  }
+}
 const { scrapeAll } = require('../scrapers/run');
 const { scrapeTournamentSchedule } = require('../scrapers/tournament');
 const { requireAuth, requireTeamRole } = require('../middleware/auth');
@@ -888,13 +911,16 @@ router.put('/teams/:orgId/:teamId/soundboard/:buttonKey',
       const videoId = youtubeUrl?.match(/(?:watch\?v=|youtu\.be\/)([^&\s]+)/)?.[1] || null;
       const def = SOUNDBOARD_DEFAULTS.find(d => d.key === buttonKey);
       if (!def) return res.status(404).json({ error: 'Unknown button key' });
+      const start = parseFloat(startSeconds) ?? def.suggestedStart;
+      const end = parseFloat(endSeconds) ?? def.suggestedEnd;
+      const extractedAudioPath = videoId ? extractYoutubeAudio(videoId, start, end, buttonKey) : null;
       await queries.upsertSoundboardButton({
         pgOrgId: parseInt(orgId), pgTeamId: parseInt(teamId),
         buttonKey, label: def.label, emoji: def.emoji,
         youtubeVideoId: videoId,
-        startSeconds: parseFloat(startSeconds) ?? def.suggestedStart,
-        endSeconds: parseFloat(endSeconds) ?? def.suggestedEnd,
+        startSeconds: start, endSeconds: end,
         sortOrder: SOUNDBOARD_DEFAULTS.indexOf(def),
+        extractedAudioPath,
       });
       res.json({ status: 'ok', videoId });
     } catch (err) {
@@ -922,11 +948,13 @@ router.post('/teams/:orgId/:teamId/playlist',
       const { youtubeUrl, songTitle, artistName, startSeconds, endSeconds } = req.body;
       if (!songTitle) return res.status(400).json({ error: 'songTitle required' });
       const videoId = youtubeUrl?.match(/(?:watch\?v=|youtu\.be\/)([^&\s]+)/)?.[1] || null;
+      const start = parseFloat(startSeconds) || 0;
+      const end = parseFloat(endSeconds) || 180;
+      const extractedAudioPath = videoId ? extractYoutubeAudio(videoId, start, end, songTitle) : null;
       const id = await queries.insertPlaylistSong({
         pgOrgId: parseInt(orgId), pgTeamId: parseInt(teamId),
         songTitle, artistName: artistName || null, youtubeVideoId: videoId,
-        startSeconds: parseFloat(startSeconds) || 0,
-        endSeconds: parseFloat(endSeconds) || 180,
+        startSeconds: start, endSeconds: end, extractedAudioPath,
       });
       res.json({ status: 'ok', id });
     } catch (err) {
@@ -942,11 +970,13 @@ router.put('/teams/:orgId/:teamId/playlist/:id',
     try {
       const { youtubeUrl, songTitle, artistName, startSeconds, endSeconds } = req.body;
       const videoId = youtubeUrl?.match(/(?:watch\?v=|youtu\.be\/)([^&\s]+)/)?.[1] || null;
+      const start = parseFloat(startSeconds) || 0;
+      const end = parseFloat(endSeconds) || 180;
+      const extractedAudioPath = videoId ? extractYoutubeAudio(videoId, start, end, songTitle) : null;
       await queries.updatePlaylistSong({
         id: parseInt(req.params.id), songTitle, artistName: artistName || null,
         youtubeVideoId: videoId,
-        startSeconds: parseFloat(startSeconds) || 0,
-        endSeconds: parseFloat(endSeconds) || 180,
+        startSeconds: start, endSeconds: end, extractedAudioPath,
       });
       res.json({ status: 'ok' });
     } catch (err) {
@@ -1040,25 +1070,7 @@ router.post('/teams/:orgId/:teamId/players/:playerName/walkup-song/youtube',
       const end = parseFloat(endSeconds) || 45;
 
       // Extract audio from YouTube for iOS compatibility
-      let extractedAudioPath = null;
-      try {
-        const { execSync } = require('child_process');
-        const safeName = decodedName.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 30);
-        const filename = `yt-${videoId}-${safeName}.mp3`;
-        const outPath = path.join(__dirname, '..', '..', 'data', 'walkups', filename);
-        const tempPath = outPath.replace('.mp3', '_full.%(ext)s');
-        // Download full audio then trim with ffmpeg
-        execSync(`yt-dlp -x --audio-format mp3 -o "${tempPath}" "https://www.youtube.com/watch?v=${videoId}" 2>&1`, { timeout: 60000 });
-        const fullMp3 = tempPath.replace('%(ext)s', 'mp3');
-        const duration = end - start;
-        execSync(`ffmpeg -y -i "${fullMp3}" -ss ${start} -t ${duration} -acodec libmp3lame -q:a 2 "${outPath}" 2>&1`, { timeout: 30000 });
-        // Clean up full file
-        try { require('fs').unlinkSync(fullMp3); } catch(e) {}
-        extractedAudioPath = filename;
-        console.log(`[walkup] Extracted audio: ${filename}`);
-      } catch (extractErr) {
-        console.error(`[walkup] Audio extraction failed: ${extractErr.message}`);
-      }
+      const extractedAudioPath = extractYoutubeAudio(videoId, start, end, decodedName);
 
       await queries.upsertWalkupSong({
         pgOrgId: parseInt(orgId),

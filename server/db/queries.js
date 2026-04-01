@@ -633,15 +633,16 @@ async function getTeamSoundboard(orgId, teamId) {
   return all(db, 'SELECT * FROM team_soundboard WHERE pg_org_id = ? AND pg_team_id = ? ORDER BY sort_order', [orgId, teamId]);
 }
 
-async function upsertSoundboardButton({ pgOrgId, pgTeamId, buttonKey, label, emoji, youtubeVideoId, startSeconds, endSeconds, sortOrder }) {
+async function upsertSoundboardButton({ pgOrgId, pgTeamId, buttonKey, label, emoji, youtubeVideoId, startSeconds, endSeconds, sortOrder, extractedAudioPath }) {
   const db = await getDb();
   run(db, `
-    INSERT INTO team_soundboard (pg_org_id, pg_team_id, button_key, label, emoji, youtube_video_id, start_seconds, end_seconds, sort_order)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO team_soundboard (pg_org_id, pg_team_id, button_key, label, emoji, youtube_video_id, start_seconds, end_seconds, sort_order, extracted_audio_path)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(pg_org_id, pg_team_id, button_key) DO UPDATE SET
       label=excluded.label, emoji=excluded.emoji, youtube_video_id=excluded.youtube_video_id,
-      start_seconds=excluded.start_seconds, end_seconds=excluded.end_seconds, sort_order=excluded.sort_order
-  `, [pgOrgId, pgTeamId, buttonKey, label, emoji ?? null, youtubeVideoId ?? null, startSeconds, endSeconds, sortOrder ?? 0]);
+      start_seconds=excluded.start_seconds, end_seconds=excluded.end_seconds, sort_order=excluded.sort_order,
+      extracted_audio_path=excluded.extracted_audio_path
+  `, [pgOrgId, pgTeamId, buttonKey, label, emoji ?? null, youtubeVideoId ?? null, startSeconds, endSeconds, sortOrder ?? 0, extractedAudioPath ?? null]);
 }
 
 // ── Playlist ──────────────────────────────────────────────────────────────
@@ -651,13 +652,13 @@ async function getTeamPlaylist(orgId, teamId) {
   return all(db, 'SELECT * FROM team_playlist WHERE pg_org_id = ? AND pg_team_id = ? ORDER BY sort_order, id', [orgId, teamId]);
 }
 
-async function insertPlaylistSong({ pgOrgId, pgTeamId, songTitle, artistName, youtubeVideoId, startSeconds, endSeconds, sortOrder }) {
+async function insertPlaylistSong({ pgOrgId, pgTeamId, songTitle, artistName, youtubeVideoId, startSeconds, endSeconds, sortOrder, extractedAudioPath }) {
   const db = await getDb();
   const maxOrder = get(db, 'SELECT MAX(sort_order) as m FROM team_playlist WHERE pg_org_id = ? AND pg_team_id = ?', [pgOrgId, pgTeamId]);
   const nextOrder = sortOrder ?? ((maxOrder?.m ?? -1) + 1);
   db.run(
-    `INSERT INTO team_playlist (pg_org_id, pg_team_id, song_title, artist_name, youtube_video_id, start_seconds, end_seconds, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [pgOrgId, pgTeamId, songTitle, artistName ?? null, youtubeVideoId ?? null, startSeconds ?? 0, endSeconds ?? 180, nextOrder]
+    `INSERT INTO team_playlist (pg_org_id, pg_team_id, song_title, artist_name, youtube_video_id, start_seconds, end_seconds, sort_order, extracted_audio_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [pgOrgId, pgTeamId, songTitle, artistName ?? null, youtubeVideoId ?? null, startSeconds ?? 0, endSeconds ?? 180, nextOrder, extractedAudioPath ?? null]
   );
   const result = db.exec('SELECT last_insert_rowid() as id');
   const id = result[0].values[0][0];
@@ -665,10 +666,10 @@ async function insertPlaylistSong({ pgOrgId, pgTeamId, songTitle, artistName, yo
   return id;
 }
 
-async function updatePlaylistSong({ id, songTitle, artistName, youtubeVideoId, startSeconds, endSeconds }) {
+async function updatePlaylistSong({ id, songTitle, artistName, youtubeVideoId, startSeconds, endSeconds, extractedAudioPath }) {
   const db = await getDb();
-  run(db, `UPDATE team_playlist SET song_title=?, artist_name=?, youtube_video_id=?, start_seconds=?, end_seconds=? WHERE id=?`,
-    [songTitle, artistName ?? null, youtubeVideoId ?? null, startSeconds ?? 0, endSeconds ?? 180, id]);
+  run(db, `UPDATE team_playlist SET song_title=?, artist_name=?, youtube_video_id=?, start_seconds=?, end_seconds=?, extracted_audio_path=? WHERE id=?`,
+    [songTitle, artistName ?? null, youtubeVideoId ?? null, startSeconds ?? 0, endSeconds ?? 180, extractedAudioPath ?? null, id]);
 }
 
 async function deletePlaylistSong(id) {

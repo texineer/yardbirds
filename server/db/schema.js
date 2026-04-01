@@ -284,6 +284,10 @@ function initSchema() {
   try { db.run("ALTER TABLE plate_appearances ADD COLUMN fielder TEXT"); } catch(e) {}
   try { db.run("ALTER TABLE plate_appearances ADD COLUMN runs_scored INTEGER DEFAULT 0"); } catch(e) {}
 
+  // Migration: extracted audio for iOS compatibility
+  try { db.run("ALTER TABLE team_soundboard ADD COLUMN extracted_audio_path TEXT"); } catch(e) {}
+  try { db.run("ALTER TABLE team_playlist ADD COLUMN extracted_audio_path TEXT"); } catch(e) {}
+
   // Migration: extracted audio for YouTube walkup songs (iOS compatibility)
   try { db.run("ALTER TABLE player_walkup_songs ADD COLUMN extracted_audio_path TEXT"); } catch(e) {}
 
