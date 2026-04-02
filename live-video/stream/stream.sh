@@ -32,6 +32,13 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AI_DIR="$SCRIPT_DIR/../ai-service"
 
+# Auto-loop when input is a file (not a /dev/ device)
+LOOP_FLAG=""
+if [[ "$INPUT" != /dev/* ]]; then
+  LOOP_FLAG="--loop"
+  echo "[stream] Video file detected — will loop continuously"
+fi
+
 echo "[stream] Starting BleacherBox Live broadcast"
 echo "[stream] Input: $INPUT"
 echo "[stream] Resolution: ${WIDTH}x${HEIGHT} @ ${FPS}fps"
@@ -42,6 +49,7 @@ python3 "$AI_DIR/main.py" \
   --width "$WIDTH" \
   --height "$HEIGHT" \
   --fps "$FPS" \
+  $LOOP_FLAG \
   | ffmpeg \
     -f rawvideo \
     -pix_fmt bgr24 \

@@ -44,6 +44,8 @@ def parse_args():
     p.add_argument("--width", type=int, default=TARGET_W)
     p.add_argument("--height", type=int, default=TARGET_H)
     p.add_argument("--fps", type=int, default=TARGET_FPS)
+    p.add_argument("--loop", action="store_true",
+                   help="Loop video file continuously (for live stream simulation)")
     return p.parse_args()
 
 
@@ -93,6 +95,9 @@ def main():
         while True:
             ret, frame = cap.read()
             if not ret:
+                if args.loop:
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    continue
                 break
 
             # Resize to target resolution
