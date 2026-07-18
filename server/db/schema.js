@@ -383,21 +383,30 @@ function closeDb() {
 
 async function seedGlobalAdmin() {
   const bcrypt = require('bcryptjs');
-  const email = 'ray@bleacherbox.app';
-  const existing = db.exec(`SELECT id FROM users WHERE email = '${email}'`);
+  const email = process.env.GLOBAL_ADMIN_EMAIL || 'ray@bleacherbox.app';
+  const contactEmail = process.env.GLOBAL_ADMIN_CONTACT_EMAIL || 'ray@texineer.com';
+
+  // If the admin already exists, just ensure the flag is set — never touch the password.
+  const existing = db.exec('SELECT id FROM users WHERE email = ?', [email]);
   if (existing.length > 0 && existing[0].values.length > 0) {
-    // Ensure flag is set
-    db.run(`UPDATE users SET is_global_admin = 1, contact_email = 'ray@texineer.com' WHERE email = ?`, [email]);
+    db.run('UPDATE users SET is_global_admin = 1, contact_email = ? WHERE email = ?', [contactEmail, email]);
     saveDb();
     return;
   }
-  const hash = await bcrypt.hash('poiuytrewq', 10);
+
+  // First-time seed requires an explicitly provided password — no hardcoded default.
+  const password = process.env.GLOBAL_ADMIN_PASSWORD;
+  if (!password) {
+    console.warn(`[db] GLOBAL_ADMIN_PASSWORD not set — skipping global admin seed for ${email}. Set it to create the initial admin.`);
+    return;
+  }
+  const hash = await bcrypt.hash(password, 10);
   db.run(
     `INSERT INTO users (email, password_hash, display_name, is_global_admin, contact_email) VALUES (?, ?, ?, 1, ?)`,
-    [email, hash, 'Ray', 'ray@texineer.com']
+    [email, hash, 'Ray', contactEmail]
   );
   saveDb();
-  console.log('[db] Global admin seeded: ray@bleacherbox.app');
+  console.log(`[db] Global admin seeded: ${email}`);
 }
 
 module.exports = { getDb, saveDb, closeDb, seedGlobalAdmin };

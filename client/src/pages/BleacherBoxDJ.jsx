@@ -35,7 +35,7 @@ export default function BleacherBoxDJ() {
           ]).then(([sb, pl]) => {
             setSoundboard(sb)
             setPlaylist(pl)
-          }).catch(() => {})
+          }).catch((e) => console.error('[DJ] Failed to load soundboard/playlist:', e))
         }
       })
       .catch(() => setTeam(null))

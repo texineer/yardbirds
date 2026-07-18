@@ -12,15 +12,20 @@ export default function Stream({ orgId, teamId }) {
   const [saving, setSaving] = useState(false)
   const [editUrl, setEditUrl] = useState('')
   const [copied, setCopied] = useState(false)
+  const [error, setError] = useState('')
 
   useEffect(() => {
     fetch(`${API}/teams/${orgId}/${teamId}/stream`)
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error('Failed to load stream settings')
+        return r.json()
+      })
       .then(data => {
         setConfig(data)
         setEditUrl(data.youtube_url || '')
+        setError('')
       })
-      .catch(() => {})
+      .catch(() => setError('Could not load stream settings.'))
       .finally(() => setLoading(false))
   }, [orgId, teamId])
 
@@ -32,20 +37,30 @@ export default function Stream({ orgId, teamId }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...config, ...updates }),
       })
+      // Don't overwrite good config with an error body on a failed save.
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.error || 'Save failed')
+      }
       const data = await res.json()
       setConfig(data)
       setEditUrl(data.youtube_url || '')
+      setError('')
     } catch (err) {
-      console.error(err)
+      setError(err.message || 'Could not save stream settings.')
     } finally {
       setSaving(false)
     }
   }
 
   function handleCopy() {
+    // clipboard.writeText rejects on insecure contexts / unsupported browsers.
     navigator.clipboard.writeText(config.youtube_url || '')
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+      .then(() => {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      })
+      .catch(() => setError('Copy failed — please copy the link manually.'))
   }
 
   if (loading) return (
@@ -56,6 +71,12 @@ export default function Stream({ orgId, teamId }) {
 
   return (
     <div className="space-y-5 pb-8">
+      {error && (
+        <div className="text-sm rounded-lg px-3 py-2" role="alert"
+          style={{ background: '#fef2f2', color: '#b91c1c', border: '1px solid #fecaca' }}>
+          {error}
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center gap-3 pt-1">
         <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"

@@ -74,6 +74,20 @@ function requireGlobalAdmin(req, res, next) {
   next();
 }
 
+// Reject requests whose orgId/teamId route params aren't plain positive
+// integers. Runs BEFORE multer disk storage so a value like "5/../../etc"
+// can never reach path.join() and traverse outside the data directory.
+function validateTeamParams(req, res, next) {
+  const intRe = /^\d+$/;
+  for (const key of ['orgId', 'teamId']) {
+    const val = req.params[key];
+    if (val !== undefined && !intRe.test(val)) {
+      return res.status(400).json({ error: `Invalid ${key}` });
+    }
+  }
+  next();
+}
+
 async function optionalAuth(req, res, next) {
   if (req.session?.userId) {
     req.user = await queries.getUserById(req.session.userId);
@@ -83,4 +97,4 @@ async function optionalAuth(req, res, next) {
   next();
 }
 
-module.exports = { requireAuth, requireTeamRole, requireGlobalAdmin, optionalAuth };
+module.exports = { requireAuth, requireTeamRole, requireGlobalAdmin, optionalAuth, validateTeamParams };

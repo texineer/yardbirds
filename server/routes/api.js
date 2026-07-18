@@ -4,23 +4,56 @@ const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
 const axios = require('axios');
-const { execSync } = require('child_process');
+const { execFile } = require('child_process');
+const { promisify } = require('util');
+const execFileAsync = promisify(execFile);
 const queries = require('../db/queries');
 
-// Extract audio from YouTube video and save as trimmed MP3
-function extractYoutubeAudio(videoId, startSeconds, endSeconds, label) {
+// A valid YouTube video ID is exactly 11 chars of [A-Za-z0-9_-].
+const YOUTUBE_ID_RE = /^[A-Za-z0-9_-]{11}$/;
+
+// Extract audio from a YouTube video and save as a trimmed MP3.
+// Async + non-blocking: yt-dlp/ffmpeg run as child processes we await, so a
+// single extraction can't stall the event loop for other requests.
+async function extractYoutubeAudio(videoId, startSeconds, endSeconds, label) {
   try {
+    // Reject anything that isn't a canonical YouTube ID before it reaches a
+    // subprocess. Combined with execFile (no shell) this closes the command
+    // injection vector entirely.
+    if (!YOUTUBE_ID_RE.test(videoId)) {
+      console.error(`[extract] Rejected invalid videoId: ${JSON.stringify(videoId)}`);
+      return null;
+    }
+    const start = Number(startSeconds);
+    const end = Number(endSeconds);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+      console.error(`[extract] Invalid clip range: ${startSeconds}-${endSeconds}`);
+      return null;
+    }
     const safeName = (label || videoId).replace(/[^a-zA-Z0-9]/g, '_').slice(0, 30);
     const filename = `yt-${videoId}-${safeName}.mp3`;
     const walkupsDir = path.join(__dirname, '..', '..', 'data', 'walkups');
     if (!fs.existsSync(walkupsDir)) fs.mkdirSync(walkupsDir, { recursive: true });
     const outPath = path.join(walkupsDir, filename);
     const tempPath = outPath.replace('.mp3', '_full.%(ext)s');
-    execSync(`yt-dlp -x --audio-format mp3 -o "${tempPath}" "https://www.youtube.com/watch?v=${videoId}" 2>&1`, { timeout: 60000 });
     const fullMp3 = tempPath.replace('%(ext)s', 'mp3');
-    const duration = endSeconds - startSeconds;
-    execSync(`ffmpeg -y -i "${fullMp3}" -ss ${startSeconds} -t ${duration} -acodec libmp3lame -q:a 2 "${outPath}" 2>&1`, { timeout: 30000 });
-    try { fs.unlinkSync(fullMp3); } catch(e) {}
+    try {
+      // Pass every value as a discrete argv entry — no shell, no interpolation.
+      await execFileAsync('yt-dlp', [
+        '-x', '--audio-format', 'mp3',
+        '-o', tempPath,
+        `https://www.youtube.com/watch?v=${videoId}`,
+      ], { timeout: 60000 });
+      await execFileAsync('ffmpeg', [
+        '-y', '-i', fullMp3,
+        '-ss', String(start), '-t', String(end - start),
+        '-acodec', 'libmp3lame', '-q:a', '2',
+        outPath,
+      ], { timeout: 30000 });
+    } finally {
+      // Always clean up the full-length download, even if the trim step fails.
+      try { fs.unlinkSync(fullMp3); } catch (e) {}
+    }
     console.log(`[extract] Audio: ${filename}`);
     return filename;
   } catch (err) {
@@ -30,7 +63,7 @@ function extractYoutubeAudio(videoId, startSeconds, endSeconds, label) {
 }
 const { scrapeAll } = require('../scrapers/run');
 const { scrapeTournamentSchedule } = require('../scrapers/tournament');
-const { requireAuth, requireTeamRole } = require('../middleware/auth');
+const { requireAuth, requireTeamRole, validateTeamParams } = require('../middleware/auth');
 
 const dataDir = path.join(__dirname, '..', '..', 'data');
 
@@ -119,9 +152,25 @@ router.post('/teams', requireAuth, async (req, res) => {
   try {
     const { slug, pgOrgId, pgTeamId, name, ageGroup, ftTeamUuid, ftSeasons, logoUrl } = req.body;
     if (!slug || !pgOrgId || !pgTeamId) return res.status(400).json({ error: 'slug, pgOrgId, pgTeamId required' });
-    await queries.registerTeam({ slug, pgOrgId, pgTeamId, name: name || '', ageGroup: ageGroup || '', ftTeamUuid, ftSeasons, logoUrl });
+
+    // pg IDs must be positive integers.
+    const orgId = Number(pgOrgId);
+    const teamId = Number(pgTeamId);
+    if (!Number.isInteger(orgId) || orgId <= 0 || !Number.isInteger(teamId) || teamId <= 0) {
+      return res.status(400).json({ error: 'pgOrgId and pgTeamId must be positive integers' });
+    }
+
+    // Prevent takeover: only a global admin may re-register (and thus re-slug /
+    // grant themselves admin over) a team that already exists. Open registration
+    // is limited to genuinely new teams.
+    const existing = await queries.getTeam(orgId, teamId);
+    if (existing && !req.user.is_global_admin) {
+      return res.status(409).json({ error: 'Team already registered' });
+    }
+
+    await queries.registerTeam({ slug, pgOrgId: orgId, pgTeamId: teamId, name: name || '', ageGroup: ageGroup || '', ftTeamUuid, ftSeasons, logoUrl });
     // Auto-assign admin role to creator
-    await queries.setUserTeamRole(req.user.id, parseInt(pgOrgId), parseInt(pgTeamId), 'admin');
+    await queries.setUserTeamRole(req.user.id, orgId, teamId, 'admin');
     res.json({ status: 'ok', slug });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -306,7 +355,7 @@ router.get('/tournaments/:eventId/full-schedule', async (req, res) => {
 });
 
 // POST /api/tournaments/:eventId/sync - re-scrape a single tournament
-router.post('/tournaments/:eventId/sync', async (req, res) => {
+router.post('/tournaments/:eventId/sync', requireAuth, async (req, res) => {
   try {
     const eventId = parseInt(req.params.eventId);
     const tournament = await queries.getTournament(eventId);
@@ -539,7 +588,7 @@ router.post('/games', requireAuth, async (req, res) => {
 const requireScorekeeper = requireTeamRole(['admin', 'scorekeeper']);
 
 // POST /api/games/:gameId/fetch-score - scrape score from PG for a single game
-router.post('/games/:gameId/fetch-score', async (req, res) => {
+router.post('/games/:gameId/fetch-score', requireScorekeeper, async (req, res) => {
   try {
     const game = await queries.getGame(parseInt(req.params.gameId));
     if (!game) return res.status(404).json({ error: 'Game not found' });
@@ -844,7 +893,7 @@ router.post('/teams/:orgId/:teamId/leave', requireAuth, async (req, res) => {
 });
 
 // POST /api/scrape/:slug - trigger manual scrape for a team by slug
-router.post('/scrape/:slug', async (req, res) => {
+router.post('/scrape/:slug', requireAuth, async (req, res) => {
   try {
     const { scrapeBySlug } = require('../scrapers/run');
     res.json({ status: 'started', message: 'Scrape started in background' });
@@ -857,7 +906,7 @@ router.post('/scrape/:slug', async (req, res) => {
 });
 
 // POST /api/scrape - scrape all registered teams
-router.post('/scrape', async (req, res) => {
+router.post('/scrape', requireAuth, async (req, res) => {
   try {
     const { scrapeAllTeams } = require('../scrapers/run');
     res.json({ status: 'started', message: 'Scraping all teams in background' });
@@ -913,7 +962,7 @@ router.put('/teams/:orgId/:teamId/soundboard/:buttonKey',
       if (!def) return res.status(404).json({ error: 'Unknown button key' });
       const start = parseFloat(startSeconds) ?? def.suggestedStart;
       const end = parseFloat(endSeconds) ?? def.suggestedEnd;
-      const extractedAudioPath = videoId ? extractYoutubeAudio(videoId, start, end, buttonKey) : null;
+      const extractedAudioPath = videoId ? await extractYoutubeAudio(videoId, start, end, buttonKey) : null;
       await queries.upsertSoundboardButton({
         pgOrgId: parseInt(orgId), pgTeamId: parseInt(teamId),
         buttonKey, label: def.label, emoji: def.emoji,
@@ -950,7 +999,7 @@ router.post('/teams/:orgId/:teamId/playlist',
       const videoId = youtubeUrl?.match(/(?:watch\?v=|youtu\.be\/)([^&\s]+)/)?.[1] || null;
       const start = parseFloat(startSeconds) || 0;
       const end = parseFloat(endSeconds) || 180;
-      const extractedAudioPath = videoId ? extractYoutubeAudio(videoId, start, end, songTitle) : null;
+      const extractedAudioPath = videoId ? await extractYoutubeAudio(videoId, start, end, songTitle) : null;
       const id = await queries.insertPlaylistSong({
         pgOrgId: parseInt(orgId), pgTeamId: parseInt(teamId),
         songTitle, artistName: artistName || null, youtubeVideoId: videoId,
@@ -972,7 +1021,7 @@ router.put('/teams/:orgId/:teamId/playlist/:id',
       const videoId = youtubeUrl?.match(/(?:watch\?v=|youtu\.be\/)([^&\s]+)/)?.[1] || null;
       const start = parseFloat(startSeconds) || 0;
       const end = parseFloat(endSeconds) || 180;
-      const extractedAudioPath = videoId ? extractYoutubeAudio(videoId, start, end, songTitle) : null;
+      const extractedAudioPath = videoId ? await extractYoutubeAudio(videoId, start, end, songTitle) : null;
       await queries.updatePlaylistSong({
         id: parseInt(req.params.id), songTitle, artistName: artistName || null,
         youtubeVideoId: videoId,
@@ -1016,6 +1065,7 @@ router.get('/teams/:orgId/:teamId/players/:playerName/walkup-song', async (req, 
 
 // POST /api/teams/:orgId/:teamId/players/:playerName/walkup-song/upload
 router.post('/teams/:orgId/:teamId/players/:playerName/walkup-song/upload',
+  validateTeamParams,
   requireTeamRole(['admin', 'scorekeeper']),
   uploadWalkup.single('file'),
   async (req, res) => {
@@ -1070,7 +1120,7 @@ router.post('/teams/:orgId/:teamId/players/:playerName/walkup-song/youtube',
       const end = parseFloat(endSeconds) || 45;
 
       // Extract audio from YouTube for iOS compatibility
-      const extractedAudioPath = extractYoutubeAudio(videoId, start, end, decodedName);
+      const extractedAudioPath = await extractYoutubeAudio(videoId, start, end, decodedName);
 
       await queries.upsertWalkupSong({
         pgOrgId: parseInt(orgId),
@@ -1145,11 +1195,13 @@ const uploadCard = multer({
 
 // POST /api/teams/:orgId/:teamId/players/:playerName/baseball-card
 router.post('/teams/:orgId/:teamId/players/:playerName/baseball-card',
-  requireAuth,
+  validateTeamParams,
+  requireTeamRole(['admin', 'scorekeeper']),
   uploadCard.single('file'),
   async (req, res) => {
     try {
       const { orgId, teamId, playerName } = req.params;
+      if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
       const name = decodeURIComponent(playerName);
       const cardPath = `${orgId}/${teamId}/${req.file.filename}`;
       await queries.setPlayerCardPath(parseInt(orgId), parseInt(teamId), name, cardPath);
@@ -1162,7 +1214,8 @@ router.post('/teams/:orgId/:teamId/players/:playerName/baseball-card',
 
 // DELETE /api/teams/:orgId/:teamId/players/:playerName/baseball-card
 router.delete('/teams/:orgId/:teamId/players/:playerName/baseball-card',
-  requireAuth,
+  validateTeamParams,
+  requireTeamRole(['admin', 'scorekeeper']),
   async (req, res) => {
     try {
       const { orgId, teamId, playerName } = req.params;

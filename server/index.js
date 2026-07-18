@@ -12,15 +12,39 @@ const SqliteSessionStore = require('./db/sessionStore');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const isProd = process.env.NODE_ENV === 'production';
+
+// A signed-session secret is mandatory in production — refuse to start with the
+// known dev fallback so cookies can't be forged with a public secret.
+const SESSION_SECRET = process.env.SESSION_SECRET || (isProd ? null : 'bleacherbox-dev-secret');
+if (!SESSION_SECRET) {
+  console.error('[server] SESSION_SECRET must be set in production. Refusing to start.');
+  process.exit(1);
+}
+
+// CORS: restrict to an explicit allowlist in production; reflect localhost in dev.
+// Set ALLOWED_ORIGINS to a comma-separated list of front-end origins.
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
+  .split(',').map(o => o.trim()).filter(Boolean);
+const corsOptions = {
+  credentials: true,
+  origin(origin, cb) {
+    // Same-origin / non-browser requests send no Origin header — allow them.
+    if (!origin) return cb(null, true);
+    if (!isProd) return cb(null, true);
+    if (allowedOrigins.includes(origin)) return cb(null, true);
+    return cb(new Error('Not allowed by CORS'));
+  },
+};
 
 // Middleware
-app.use(cors({ origin: true, credentials: true }));
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // Session
 app.use(session({
   store: new SqliteSessionStore(),
-  secret: process.env.SESSION_SECRET || 'bleacherbox-dev-secret',
+  secret: SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
   cookie: {
@@ -50,6 +74,35 @@ app.get('*', (req, res) => {
   if (!req.path.startsWith('/api')) {
     res.sendFile(path.join(clientDist, 'index.html'));
   }
+});
+
+// Error handler — turn multer/upload and other route errors into clean JSON
+// instead of Express's default HTML 500. Must be last (4-arg signature).
+const { MulterError } = require('multer');
+app.use((err, req, res, next) => {
+  if (res.headersSent) return next(err);
+  if (err instanceof MulterError) {
+    // e.g. LIMIT_FILE_SIZE — a client error, not a server fault.
+    return res.status(400).json({ error: err.message, code: err.code });
+  }
+  // fileFilter rejections are plain Errors thrown from multer middleware.
+  if (/allowed/i.test(err?.message || '')) {
+    return res.status(400).json({ error: err.message });
+  }
+  if (err?.message === 'Not allowed by CORS') {
+    return res.status(403).json({ error: err.message });
+  }
+  console.error('[server] Unhandled route error:', err);
+  res.status(500).json({ error: 'Internal server error' });
+});
+
+// Last-resort process handlers so a stray rejection/exception is logged rather
+// than crashing silently (or, under modern Node defaults, taking down the app).
+process.on('unhandledRejection', (reason) => {
+  console.error('[server] Unhandled promise rejection:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[server] Uncaught exception:', err);
 });
 
 // Initialize DB and start server
