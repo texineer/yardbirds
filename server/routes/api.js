@@ -4,18 +4,18 @@ const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
 const axios = require('axios');
-const { execFileSync } = require('child_process');
+const { execFile } = require('child_process');
+const { promisify } = require('util');
+const execFileAsync = promisify(execFile);
 const queries = require('../db/queries');
 
 // A valid YouTube video ID is exactly 11 chars of [A-Za-z0-9_-].
 const YOUTUBE_ID_RE = /^[A-Za-z0-9_-]{11}$/;
 
-// Extract audio from YouTube video and save as trimmed MP3.
-// NOTE: this runs synchronously and blocks the event loop for the duration of
-// yt-dlp/ffmpeg — acceptable only because it is behind admin/scorekeeper auth.
-// TODO: move to an async background job so a single extraction can't stall the
-// server for other requests.
-function extractYoutubeAudio(videoId, startSeconds, endSeconds, label) {
+// Extract audio from a YouTube video and save as a trimmed MP3.
+// Async + non-blocking: yt-dlp/ffmpeg run as child processes we await, so a
+// single extraction can't stall the event loop for other requests.
+async function extractYoutubeAudio(videoId, startSeconds, endSeconds, label) {
   try {
     // Reject anything that isn't a canonical YouTube ID before it reaches a
     // subprocess. Combined with execFile (no shell) this closes the command
@@ -39,12 +39,12 @@ function extractYoutubeAudio(videoId, startSeconds, endSeconds, label) {
     const fullMp3 = tempPath.replace('%(ext)s', 'mp3');
     try {
       // Pass every value as a discrete argv entry — no shell, no interpolation.
-      execFileSync('yt-dlp', [
+      await execFileAsync('yt-dlp', [
         '-x', '--audio-format', 'mp3',
         '-o', tempPath,
         `https://www.youtube.com/watch?v=${videoId}`,
       ], { timeout: 60000 });
-      execFileSync('ffmpeg', [
+      await execFileAsync('ffmpeg', [
         '-y', '-i', fullMp3,
         '-ss', String(start), '-t', String(end - start),
         '-acodec', 'libmp3lame', '-q:a', '2',
@@ -355,7 +355,7 @@ router.get('/tournaments/:eventId/full-schedule', async (req, res) => {
 });
 
 // POST /api/tournaments/:eventId/sync - re-scrape a single tournament
-router.post('/tournaments/:eventId/sync', async (req, res) => {
+router.post('/tournaments/:eventId/sync', requireAuth, async (req, res) => {
   try {
     const eventId = parseInt(req.params.eventId);
     const tournament = await queries.getTournament(eventId);
@@ -588,7 +588,7 @@ router.post('/games', requireAuth, async (req, res) => {
 const requireScorekeeper = requireTeamRole(['admin', 'scorekeeper']);
 
 // POST /api/games/:gameId/fetch-score - scrape score from PG for a single game
-router.post('/games/:gameId/fetch-score', async (req, res) => {
+router.post('/games/:gameId/fetch-score', requireScorekeeper, async (req, res) => {
   try {
     const game = await queries.getGame(parseInt(req.params.gameId));
     if (!game) return res.status(404).json({ error: 'Game not found' });
@@ -893,7 +893,7 @@ router.post('/teams/:orgId/:teamId/leave', requireAuth, async (req, res) => {
 });
 
 // POST /api/scrape/:slug - trigger manual scrape for a team by slug
-router.post('/scrape/:slug', async (req, res) => {
+router.post('/scrape/:slug', requireAuth, async (req, res) => {
   try {
     const { scrapeBySlug } = require('../scrapers/run');
     res.json({ status: 'started', message: 'Scrape started in background' });
@@ -906,7 +906,7 @@ router.post('/scrape/:slug', async (req, res) => {
 });
 
 // POST /api/scrape - scrape all registered teams
-router.post('/scrape', async (req, res) => {
+router.post('/scrape', requireAuth, async (req, res) => {
   try {
     const { scrapeAllTeams } = require('../scrapers/run');
     res.json({ status: 'started', message: 'Scraping all teams in background' });
@@ -962,7 +962,7 @@ router.put('/teams/:orgId/:teamId/soundboard/:buttonKey',
       if (!def) return res.status(404).json({ error: 'Unknown button key' });
       const start = parseFloat(startSeconds) ?? def.suggestedStart;
       const end = parseFloat(endSeconds) ?? def.suggestedEnd;
-      const extractedAudioPath = videoId ? extractYoutubeAudio(videoId, start, end, buttonKey) : null;
+      const extractedAudioPath = videoId ? await extractYoutubeAudio(videoId, start, end, buttonKey) : null;
       await queries.upsertSoundboardButton({
         pgOrgId: parseInt(orgId), pgTeamId: parseInt(teamId),
         buttonKey, label: def.label, emoji: def.emoji,
@@ -999,7 +999,7 @@ router.post('/teams/:orgId/:teamId/playlist',
       const videoId = youtubeUrl?.match(/(?:watch\?v=|youtu\.be\/)([^&\s]+)/)?.[1] || null;
       const start = parseFloat(startSeconds) || 0;
       const end = parseFloat(endSeconds) || 180;
-      const extractedAudioPath = videoId ? extractYoutubeAudio(videoId, start, end, songTitle) : null;
+      const extractedAudioPath = videoId ? await extractYoutubeAudio(videoId, start, end, songTitle) : null;
       const id = await queries.insertPlaylistSong({
         pgOrgId: parseInt(orgId), pgTeamId: parseInt(teamId),
         songTitle, artistName: artistName || null, youtubeVideoId: videoId,
@@ -1021,7 +1021,7 @@ router.put('/teams/:orgId/:teamId/playlist/:id',
       const videoId = youtubeUrl?.match(/(?:watch\?v=|youtu\.be\/)([^&\s]+)/)?.[1] || null;
       const start = parseFloat(startSeconds) || 0;
       const end = parseFloat(endSeconds) || 180;
-      const extractedAudioPath = videoId ? extractYoutubeAudio(videoId, start, end, songTitle) : null;
+      const extractedAudioPath = videoId ? await extractYoutubeAudio(videoId, start, end, songTitle) : null;
       await queries.updatePlaylistSong({
         id: parseInt(req.params.id), songTitle, artistName: artistName || null,
         youtubeVideoId: videoId,
@@ -1120,7 +1120,7 @@ router.post('/teams/:orgId/:teamId/players/:playerName/walkup-song/youtube',
       const end = parseFloat(endSeconds) || 45;
 
       // Extract audio from YouTube for iOS compatibility
-      const extractedAudioPath = extractYoutubeAudio(videoId, start, end, decodedName);
+      const extractedAudioPath = await extractYoutubeAudio(videoId, start, end, decodedName);
 
       await queries.upsertWalkupSong({
         pgOrgId: parseInt(orgId),

@@ -76,6 +76,35 @@ app.get('*', (req, res) => {
   }
 });
 
+// Error handler — turn multer/upload and other route errors into clean JSON
+// instead of Express's default HTML 500. Must be last (4-arg signature).
+const { MulterError } = require('multer');
+app.use((err, req, res, next) => {
+  if (res.headersSent) return next(err);
+  if (err instanceof MulterError) {
+    // e.g. LIMIT_FILE_SIZE — a client error, not a server fault.
+    return res.status(400).json({ error: err.message, code: err.code });
+  }
+  // fileFilter rejections are plain Errors thrown from multer middleware.
+  if (/allowed/i.test(err?.message || '')) {
+    return res.status(400).json({ error: err.message });
+  }
+  if (err?.message === 'Not allowed by CORS') {
+    return res.status(403).json({ error: err.message });
+  }
+  console.error('[server] Unhandled route error:', err);
+  res.status(500).json({ error: 'Internal server error' });
+});
+
+// Last-resort process handlers so a stray rejection/exception is logged rather
+// than crashing silently (or, under modern Node defaults, taking down the app).
+process.on('unhandledRejection', (reason) => {
+  console.error('[server] Unhandled promise rejection:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[server] Uncaught exception:', err);
+});
+
 // Initialize DB and start server
 async function start() {
   await getDb();
