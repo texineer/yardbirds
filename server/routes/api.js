@@ -4,23 +4,56 @@ const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
 const axios = require('axios');
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 const queries = require('../db/queries');
 
-// Extract audio from YouTube video and save as trimmed MP3
+// A valid YouTube video ID is exactly 11 chars of [A-Za-z0-9_-].
+const YOUTUBE_ID_RE = /^[A-Za-z0-9_-]{11}$/;
+
+// Extract audio from YouTube video and save as trimmed MP3.
+// NOTE: this runs synchronously and blocks the event loop for the duration of
+// yt-dlp/ffmpeg — acceptable only because it is behind admin/scorekeeper auth.
+// TODO: move to an async background job so a single extraction can't stall the
+// server for other requests.
 function extractYoutubeAudio(videoId, startSeconds, endSeconds, label) {
   try {
+    // Reject anything that isn't a canonical YouTube ID before it reaches a
+    // subprocess. Combined with execFile (no shell) this closes the command
+    // injection vector entirely.
+    if (!YOUTUBE_ID_RE.test(videoId)) {
+      console.error(`[extract] Rejected invalid videoId: ${JSON.stringify(videoId)}`);
+      return null;
+    }
+    const start = Number(startSeconds);
+    const end = Number(endSeconds);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+      console.error(`[extract] Invalid clip range: ${startSeconds}-${endSeconds}`);
+      return null;
+    }
     const safeName = (label || videoId).replace(/[^a-zA-Z0-9]/g, '_').slice(0, 30);
     const filename = `yt-${videoId}-${safeName}.mp3`;
     const walkupsDir = path.join(__dirname, '..', '..', 'data', 'walkups');
     if (!fs.existsSync(walkupsDir)) fs.mkdirSync(walkupsDir, { recursive: true });
     const outPath = path.join(walkupsDir, filename);
     const tempPath = outPath.replace('.mp3', '_full.%(ext)s');
-    execSync(`yt-dlp -x --audio-format mp3 -o "${tempPath}" "https://www.youtube.com/watch?v=${videoId}" 2>&1`, { timeout: 60000 });
     const fullMp3 = tempPath.replace('%(ext)s', 'mp3');
-    const duration = endSeconds - startSeconds;
-    execSync(`ffmpeg -y -i "${fullMp3}" -ss ${startSeconds} -t ${duration} -acodec libmp3lame -q:a 2 "${outPath}" 2>&1`, { timeout: 30000 });
-    try { fs.unlinkSync(fullMp3); } catch(e) {}
+    try {
+      // Pass every value as a discrete argv entry — no shell, no interpolation.
+      execFileSync('yt-dlp', [
+        '-x', '--audio-format', 'mp3',
+        '-o', tempPath,
+        `https://www.youtube.com/watch?v=${videoId}`,
+      ], { timeout: 60000 });
+      execFileSync('ffmpeg', [
+        '-y', '-i', fullMp3,
+        '-ss', String(start), '-t', String(end - start),
+        '-acodec', 'libmp3lame', '-q:a', '2',
+        outPath,
+      ], { timeout: 30000 });
+    } finally {
+      // Always clean up the full-length download, even if the trim step fails.
+      try { fs.unlinkSync(fullMp3); } catch (e) {}
+    }
     console.log(`[extract] Audio: ${filename}`);
     return filename;
   } catch (err) {
@@ -30,7 +63,7 @@ function extractYoutubeAudio(videoId, startSeconds, endSeconds, label) {
 }
 const { scrapeAll } = require('../scrapers/run');
 const { scrapeTournamentSchedule } = require('../scrapers/tournament');
-const { requireAuth, requireTeamRole } = require('../middleware/auth');
+const { requireAuth, requireTeamRole, validateTeamParams } = require('../middleware/auth');
 
 const dataDir = path.join(__dirname, '..', '..', 'data');
 
@@ -119,9 +152,25 @@ router.post('/teams', requireAuth, async (req, res) => {
   try {
     const { slug, pgOrgId, pgTeamId, name, ageGroup, ftTeamUuid, ftSeasons, logoUrl } = req.body;
     if (!slug || !pgOrgId || !pgTeamId) return res.status(400).json({ error: 'slug, pgOrgId, pgTeamId required' });
-    await queries.registerTeam({ slug, pgOrgId, pgTeamId, name: name || '', ageGroup: ageGroup || '', ftTeamUuid, ftSeasons, logoUrl });
+
+    // pg IDs must be positive integers.
+    const orgId = Number(pgOrgId);
+    const teamId = Number(pgTeamId);
+    if (!Number.isInteger(orgId) || orgId <= 0 || !Number.isInteger(teamId) || teamId <= 0) {
+      return res.status(400).json({ error: 'pgOrgId and pgTeamId must be positive integers' });
+    }
+
+    // Prevent takeover: only a global admin may re-register (and thus re-slug /
+    // grant themselves admin over) a team that already exists. Open registration
+    // is limited to genuinely new teams.
+    const existing = await queries.getTeam(orgId, teamId);
+    if (existing && !req.user.is_global_admin) {
+      return res.status(409).json({ error: 'Team already registered' });
+    }
+
+    await queries.registerTeam({ slug, pgOrgId: orgId, pgTeamId: teamId, name: name || '', ageGroup: ageGroup || '', ftTeamUuid, ftSeasons, logoUrl });
     // Auto-assign admin role to creator
-    await queries.setUserTeamRole(req.user.id, parseInt(pgOrgId), parseInt(pgTeamId), 'admin');
+    await queries.setUserTeamRole(req.user.id, orgId, teamId, 'admin');
     res.json({ status: 'ok', slug });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1016,6 +1065,7 @@ router.get('/teams/:orgId/:teamId/players/:playerName/walkup-song', async (req, 
 
 // POST /api/teams/:orgId/:teamId/players/:playerName/walkup-song/upload
 router.post('/teams/:orgId/:teamId/players/:playerName/walkup-song/upload',
+  validateTeamParams,
   requireTeamRole(['admin', 'scorekeeper']),
   uploadWalkup.single('file'),
   async (req, res) => {
@@ -1145,11 +1195,13 @@ const uploadCard = multer({
 
 // POST /api/teams/:orgId/:teamId/players/:playerName/baseball-card
 router.post('/teams/:orgId/:teamId/players/:playerName/baseball-card',
-  requireAuth,
+  validateTeamParams,
+  requireTeamRole(['admin', 'scorekeeper']),
   uploadCard.single('file'),
   async (req, res) => {
     try {
       const { orgId, teamId, playerName } = req.params;
+      if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
       const name = decodeURIComponent(playerName);
       const cardPath = `${orgId}/${teamId}/${req.file.filename}`;
       await queries.setPlayerCardPath(parseInt(orgId), parseInt(teamId), name, cardPath);
@@ -1162,7 +1214,8 @@ router.post('/teams/:orgId/:teamId/players/:playerName/baseball-card',
 
 // DELETE /api/teams/:orgId/:teamId/players/:playerName/baseball-card
 router.delete('/teams/:orgId/:teamId/players/:playerName/baseball-card',
-  requireAuth,
+  validateTeamParams,
+  requireTeamRole(['admin', 'scorekeeper']),
   async (req, res) => {
     try {
       const { orgId, teamId, playerName } = req.params;

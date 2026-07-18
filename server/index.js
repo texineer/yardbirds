@@ -12,15 +12,39 @@ const SqliteSessionStore = require('./db/sessionStore');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const isProd = process.env.NODE_ENV === 'production';
+
+// A signed-session secret is mandatory in production — refuse to start with the
+// known dev fallback so cookies can't be forged with a public secret.
+const SESSION_SECRET = process.env.SESSION_SECRET || (isProd ? null : 'bleacherbox-dev-secret');
+if (!SESSION_SECRET) {
+  console.error('[server] SESSION_SECRET must be set in production. Refusing to start.');
+  process.exit(1);
+}
+
+// CORS: restrict to an explicit allowlist in production; reflect localhost in dev.
+// Set ALLOWED_ORIGINS to a comma-separated list of front-end origins.
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
+  .split(',').map(o => o.trim()).filter(Boolean);
+const corsOptions = {
+  credentials: true,
+  origin(origin, cb) {
+    // Same-origin / non-browser requests send no Origin header — allow them.
+    if (!origin) return cb(null, true);
+    if (!isProd) return cb(null, true);
+    if (allowedOrigins.includes(origin)) return cb(null, true);
+    return cb(new Error('Not allowed by CORS'));
+  },
+};
 
 // Middleware
-app.use(cors({ origin: true, credentials: true }));
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // Session
 app.use(session({
   store: new SqliteSessionStore(),
-  secret: process.env.SESSION_SECRET || 'bleacherbox-dev-secret',
+  secret: SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
   cookie: {

@@ -6,7 +6,13 @@ services:
     volumes:
       - yardbirds-data:/app/data
     environment:
-      - SESSION_SECRET=${SESSION_SECRET:-bleacherbox-prod-change-me}
+      - NODE_ENV=production
+      # Required — compose errors out if unset (no insecure default).
+      - SESSION_SECRET=${SESSION_SECRET:?SESSION_SECRET must be set}
+      # Comma-separated list of allowed front-end origins for CORS.
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
+      # Set once to seed the initial global admin; safe to leave unset afterwards.
+      - GLOBAL_ADMIN_PASSWORD=${GLOBAL_ADMIN_PASSWORD:-}
     restart: unless-stopped
 
 volumes:
